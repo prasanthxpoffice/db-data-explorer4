@@ -15,6 +15,9 @@
         <div class="no-items" data-i18n="search.noItems" style="color: #888; font-style: italic; font-size: 0.9em;">No
             items added</div>
     </div>
+    <button id="show-graph-btn"
+        style="display:none; width: 100%; margin-top: 10px; padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
+        data-i18n="search.show">Show</button>
 </div>
 
 <script>
@@ -29,6 +32,7 @@
 
         var url = config.api.viewGroupNodes.path;
         var autoCompleteUrl = config.api.nodeDataAutoComplete.path;
+        var nodesSearchUrl = config.api.nodesSearch.path;
         var currentLang = window.i18n ? window.i18n.currentLang : 'en';
         var selectedItem = null; // Store currently selected autocomplete item
 
@@ -97,6 +101,7 @@
                 </div>
             `;
             $container.append(cardHtml);
+            updateShowButtonVisibility();
         }
 
         // Remove Card Logic (Delegated)
@@ -105,6 +110,47 @@
             if ($('#search-results .search-card').length === 0) {
                 $('#search-results .no-items').show();
             }
+            updateShowButtonVisibility();
+        });
+
+        function updateShowButtonVisibility() {
+            var hasItems = $('#search-results .search-card').length > 0;
+            if (hasItems) {
+                $('#show-graph-btn').show();
+            } else {
+                $('#show-graph-btn').hide();
+            }
+        }
+
+        // Show Button Logic
+        $('#show-graph-btn').on('click', function () {
+            var nodeDataIds = [];
+            $('#search-results .search-card').each(function () {
+                nodeDataIds.push(parseInt($(this).data('id')));
+            });
+
+            if (nodeDataIds.length === 0) return;
+
+            $.ajax({
+                url: nodesSearchUrl,
+                method: config.api.nodesSearch.method,
+                contentType: "application/json",
+                data: JSON.stringify({
+                    nodeDataIds: nodeDataIds,
+                    lang: currentLang
+                }),
+                success: function (response) {
+                    if (window.Graph && window.Graph.addNodes) {
+                        window.Graph.addNodes(response);
+                    } else {
+                        console.error("Graph module not found in window");
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error searching nodes:", error);
+                    alert("Failed to load nodes");
+                }
+            });
         });
 
         function loadSearchNodes(viewGroupId) {

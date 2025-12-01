@@ -277,5 +277,49 @@ namespace IAS.Areas.DbGraph.Controllers
             }
         }
 
+        [HttpPost]
+        [Route("nodessearch")]
+        public ActionResult NodesSearch(List<int> nodeDataIds, string lang = "en")
+        {
+            string sqlLang = (lang == "ar") ? "ar-AE" : "en-US";
+            var dt = new DataTable();
+
+            // Create DataTable for TVP
+            var tvp = new DataTable();
+            tvp.Columns.Add("NodeDataID", typeof(int));
+            if (nodeDataIds != null)
+            {
+                foreach (var id in nodeDataIds)
+                {
+                    tvp.Rows.Add(id);
+                }
+            }
+
+            using (var conn = new SqlConnection(_connectionString))
+            {
+                using (var cmd = new SqlCommand("[graphdb].[sp_NodesSearch]", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@Lang", sqlLang);
+                    
+                    var tvpParam = cmd.Parameters.AddWithValue("@NodeDataIDs", tvp);
+                    tvpParam.SqlDbType = SqlDbType.Structured;
+                    tvpParam.TypeName = "[graphdb].[NodeDataIDTable]";
+
+                    conn.Open();
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        dt.Load(reader);
+                    }
+                }
+            }
+
+            var results = dt.AsEnumerable().Select(row =>
+                dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
+            ).ToList();
+
+            return Json(results);
+        }
+
     }
 }
