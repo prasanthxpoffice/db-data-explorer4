@@ -1,0 +1,63 @@
+<div class="settings-panel-content">
+    <div style="margin-top: 20px;">
+        <button id="btn-open-nodes-settings" data-i18n="settings.nodesBtn">Entity</button>
+    </div>
+    <div style="margin-top: 10px;">
+        <button id="btn-open-relations-settings" data-i18n="settings.relationsBtn">Relations</button>
+    </div>
+</div>
+
+<!-- Modal Containers -->
+<div id="node-settings-modal" title="Entity Settings" style="display:none;">
+    <!-- Content loaded dynamically -->
+</div>
+<div id="relation-settings-modal" title="Relation Settings" style="display:none;">
+    <!-- Content loaded dynamically -->
+</div>
+
+<script>
+    (function () {
+        // Initialize Dialogs using Utility
+        if (window.AppUtils && window.AppUtils.createModal) {
+            window.AppUtils.createModal("#node-settings-modal", { width: 900, height: 'auto' });
+            window.AppUtils.createModal("#relation-settings-modal", { width: 1150, height: 'auto' });
+        } else {
+            console.error("AppUtils.createModal not found");
+        }
+
+        function openModal(modalId, url, titleKey, defaultTitle) {
+            var $modal = $(modalId);
+            var bust = '?t=' + new Date().getTime();
+
+            $.get(url + bust, function (data) {
+                $modal.html(data);
+
+                if (window.i18n && window.i18n.applyLanguage) {
+                    window.i18n.applyLanguage(window.i18n.currentLang);
+                }
+
+                var title = window.i18n ? window.i18n.get(titleKey) : defaultTitle;
+                if ($modal.hasClass('ui-dialog-content')) {
+                    $modal.dialog('option', 'title', title);
+                    $modal.dialog('open');
+
+                    // Force center position after a slight delay to allow for rendering
+                    setTimeout(function () {
+                        $modal.dialog('option', 'position', { my: "center", at: "center", of: window });
+                    }, 100);
+                }
+            }).fail(function () {
+                console.error("Failed to load " + url);
+                alert("Error loading settings.");
+            });
+        }
+
+        $('#btn-open-nodes-settings').on('click', function () {
+            openModal('#node-settings-modal', 'partials/nodesettings.html', 'nodesettings.title', 'Entity Settings');
+        });
+
+        $('#btn-open-relations-settings').on('click', function () {
+            openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
+        });
+    })();
+</script>

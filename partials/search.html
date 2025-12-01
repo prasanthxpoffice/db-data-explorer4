@@ -1,0 +1,162 @@
+<div class="search-panel-content">
+    <div class="form-group">
+        <label for="search-nodes-dropdown" data-i18n="search.entity">Entity</label>
+        <select id="search-nodes-dropdown" style="width: 100%; padding: 5px;">
+            <option value="" data-i18n="search.loading">Loading...</option>
+        </select>
+    </div>
+    <div class="form-group" style="margin-top: 10px; display: flex; gap: 5px;">
+        <input type="text" id="node-search-input" data-i18n-placeholder="search.inputPlaceholder"
+            style="width: 100%; padding: 5px; flex-grow: 1;" disabled>
+        <button id="add-search-item-btn" data-i18n="search.add" disabled>Add</button>
+    </div>
+
+    <div id="search-results" class="search-results-container">
+        <div class="no-items" data-i18n="search.noItems" style="color: #888; font-style: italic; font-size: 0.9em;">No
+            items added</div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        // Access config from parent window
+        var config = window.parent.APP_CONFIG;
+        if (!config || !config.api || !config.api.viewGroupNodes || !config.api.nodeDataAutoComplete) {
+            console.error("APP_CONFIG or APIs not found");
+            $('#search-nodes-dropdown').html('<option value="">' + window.i18n.get('datasource.errorConfig') + '</option>');
+            return;
+        }
+
+        var url = config.api.viewGroupNodes.path;
+        var autoCompleteUrl = config.api.nodeDataAutoComplete.path;
+        var currentLang = window.i18n ? window.i18n.currentLang : 'en';
+        var selectedItem = null; // Store currently selected autocomplete item
+
+        // Initialize Autocomplete
+        $("#node-search-input").autocomplete({
+            source: function (request, response) {
+                var selectedNodeId = $('#search-nodes-dropdown').val();
+                if (!selectedNodeId) return;
+
+                $.ajax({
+                    url: autoCompleteUrl,
+                    method: config.api.nodeDataAutoComplete.method,
+                    data: {
+                        NodeID: selectedNodeId,
+                        SearchText: request.term,
+                        TopCount: 20,
+                        Lang: currentLang
+                    },
+                    success: function (data) {
+                        var mappedData = $.map(data, function (item) {
+                            return {
+                                label: item.NodeValue,
+                                value: item.NodeValue,
+                                id: item.NodeDataID
+                            };
+                        });
+                        response(mappedData);
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Autocomplete error:", error);
+                        response([]);
+                    }
+                });
+            },
+            minLength: 2,
+            select: function (event, ui) {
+                selectedItem = ui.item;
+                $('#add-search-item-btn').prop('disabled', false);
+            }
+        });
+
+        // Add Button Logic
+        $('#add-search-item-btn').on('click', function () {
+            if (selectedItem) {
+                addSearchCard(selectedItem);
+                // Reset input
+                $('#node-search-input').val('');
+                selectedItem = null;
+                $(this).prop('disabled', true);
+            }
+        });
+
+        function addSearchCard(item) {
+            var $container = $('#search-results');
+            $container.find('.no-items').hide();
+
+            // Check for duplicates
+            if ($container.find('.search-card[data-id="' + item.id + '"]').length > 0) {
+                return; // Already added
+            }
+
+            var cardHtml = `
+                <div class="search-card" data-id="${item.id}">
+                    <span>${item.label}</span>
+                    <span class="remove-btn" title="Remove">×</span>
+                </div>
+            `;
+            $container.append(cardHtml);
+        }
+
+        // Remove Card Logic (Delegated)
+        $('#search-results').on('click', '.remove-btn', function () {
+            $(this).closest('.search-card').remove();
+            if ($('#search-results .search-card').length === 0) {
+                $('#search-results .no-items').show();
+            }
+        });
+
+        function loadSearchNodes(viewGroupId) {
+            var $dropdown = $('#search-nodes-dropdown');
+            $dropdown.html('<option value="">' + window.i18n.get('search.loading') + '</option>');
+            $('#node-search-input').prop('disabled', true).val('');
+            $('#add-search-item-btn').prop('disabled', true);
+
+            $.ajax({
+                url: url,
+                method: config.api.viewGroupNodes.method,
+                data: {
+                    lang: currentLang,
+                    viewGroupId: viewGroupId
+                },
+                success: function (response) {
+                    $dropdown.empty();
+                    $dropdown.append('<option value="">' + window.i18n.get('search.placeholder') + '</option>');
+
+                    if (Array.isArray(response)) {
+                        response.forEach(function (item) {
+                            var value = item.NodeID || item.id;
+                            var text = item.NodeName || item.name;
+                            $dropdown.append($('<option>', { value: value, text: text }));
+                        });
+                    } else {
+                        $dropdown.append('<option value="">' + window.i18n.get('search.error') + '</option>');
+                    }
+                },
+                error: function (xhr, status, error) {
+                    $dropdown.html('<option value="">' + window.i18n.get('search.error') + '</option>');
+                }
+            });
+        }
+
+        $(document).on('viewGroupChanged', function (e, viewGroupId) {
+            if (viewGroupId) {
+                loadSearchNodes(viewGroupId);
+            } else {
+                $('#search-nodes-dropdown').empty().append('<option value="">' + window.i18n.get('search.placeholder') + '</option>');
+                $('#node-search-input').prop('disabled', true).val('');
+                $('#add-search-item-btn').prop('disabled', true);
+            }
+        });
+
+        $('#search-nodes-dropdown').on('change', function () {
+            var val = $(this).val();
+            $('#node-search-input').prop('disabled', !val);
+            if (!val) {
+                $('#node-search-input').val('');
+                $('#add-search-item-btn').prop('disabled', true);
+            }
+        });
+    })();
+</script>

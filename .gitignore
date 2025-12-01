@@ -1,0 +1,10 @@
+# Node / tooling
+node_modules/
+.env
+.vscode/
+*.log
+
+
+IAS/bin/
+IAS/obj/
+IAS/packages/

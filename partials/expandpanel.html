@@ -1,0 +1,62 @@
+<div id="sidebar">
+    <button id="sidebar-toggle" title="Toggle Sidebar">❮</button>
+    <div id="sidebar-content">
+        <div id="main-accordion">
+            <!-- Data Source Section -->
+            <h3 data-i18n="datasource.title">Data Source</h3>
+            <div id="datasource-container"></div>
+
+            <!-- Legends Section -->
+            <h3 data-i18n="legends.title">Legends</h3>
+            <div id="legends-container"></div>
+
+            <!-- Search Section -->
+            <h3 data-i18n="search.title">Search</h3>
+            <div id="search-container"></div>
+
+            <!-- Settings Section -->
+            <h3 data-i18n="settings.title">Settings</h3>
+            <div id="settings-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        // Initialize Accordion
+        $("#main-accordion").accordion({
+            heightStyle: "content",
+            collapsible: true
+        });
+
+        // Sidebar Toggle Logic
+        $('#sidebar-toggle').on('click', function () {
+            $('#sidebar').toggleClass('collapsed');
+            const isCollapsed = $('#sidebar').hasClass('collapsed');
+            $(this).text(isCollapsed ? '❯' : '❮');
+
+            // Resize graph when sidebar toggles
+            setTimeout(function () {
+                if (window.cy) window.cy.resize();
+            }, 300);
+        });
+
+        // Load Sub-Partials
+        if (typeof window.loadComponent === 'function') {
+            window.loadComponent('partials/datasource.html', '#datasource-container');
+            window.loadComponent('partials/legends.html', '#legends-container');
+            window.loadComponent('partials/search.html', '#search-container');
+            window.loadComponent('partials/settings.html', '#settings-container');
+        } else {
+            console.error("loadComponent function not found!");
+        }
+
+        // Listen for Data Source selection to expand Legends
+        $(document).on('viewGroupChanged', function (e, viewGroupId) {
+            if (viewGroupId) {
+                // Expand Legends (Index 1)
+                $("#main-accordion").accordion("option", "active", 1);
+            }
+        });
+    })();
+</script>

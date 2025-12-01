@@ -1,0 +1,148 @@
+<div id="legends-wrapper">
+    <table id="legends-grid"></table>
+    <div id="legends-pager"></div>
+</div>
+
+<script>
+    (function () {
+        var config = window.parent.APP_CONFIG;
+        var currentViewGroupId = null;
+
+        function initGrid(lang) {
+            var $wrapper = $("#legends-wrapper");
+            $wrapper.empty();
+            $wrapper.append('<table id="legends-grid"></table><div id="legends-pager"></div>');
+
+            var $grid = $("#legends-grid");
+
+            var colModel = [
+                { label: window.i18n.get('legends.nodeName'), name: 'NodeName', width: 120 },
+                {
+                    label: window.i18n.get('legends.color'),
+                    name: 'ColumnColor',
+                    width: 40,
+                    align: 'center',
+                    formatter: function (cellvalue, options, rowObject) {
+                        return '<div style="width: 20px; height: 20px; border-radius: 50%; background-color: ' + cellvalue + '; margin: 0 auto;"></div>';
+                    }
+                },
+                {
+                    label: window.i18n.get('legends.date'),
+                    name: 'DateFilter',
+                    width: 40,
+                    align: 'center',
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                        var id = 'switch_' + options.rowId;
+                        return '<label class="switch"><input type="checkbox" id="' + id + '" data-rowid="' + options.rowId + '"><span class="slider round"></span></label>';
+                    }
+                },
+                {
+                    label: window.i18n.get('legends.from'),
+                    name: 'FromDate',
+                    width: 80,
+                    align: 'center',
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                        return '<input type="text" class="date-input from-date" data-rowid="' + options.rowId + '" disabled style="width: 100%; box-sizing: border-box; display: none;">';
+                    }
+                },
+                {
+                    label: window.i18n.get('legends.to'),
+                    name: 'ToDate',
+                    width: 80,
+                    align: 'center',
+                    sortable: false,
+                    formatter: function (cellvalue, options, rowObject) {
+                        return '<input type="text" class="date-input to-date" data-rowid="' + options.rowId + '" disabled style="width: 100%; box-sizing: border-box; display: none;">';
+                    }
+                }
+            ];
+
+            // Calculate total width
+            var totalWidth = colModel.reduce(function (sum, col) { return sum + col.width; }, 0);
+            totalWidth += 30; // Add width for multiselect column (approx)
+
+            // Initialize jqGrid with defaults from AppUtils
+            var gridOptions = AppUtils.getGridConfig({
+                colModel: colModel,
+                width: totalWidth,
+                multiselect: true,
+                pager: "#legends-pager", // Explicitly provided
+                caption: window.i18n.get('legends.title'),
+                loadComplete: function () {
+                    // Select all rows by default
+                    var rowIds = $grid.jqGrid('getDataIDs');
+                    $.each(rowIds, function (index, rowId) {
+                        $grid.jqGrid('setSelection', rowId, false);
+                    });
+                }
+            });
+
+            $grid.jqGrid(gridOptions);
+
+            // Reload data if a group is selected
+            if (currentViewGroupId) {
+                loadData(currentViewGroupId, lang);
+            }
+        }
+
+        function loadData(viewGroupId, lang) {
+            var url = config.api.viewGroupNodes.path;
+            var $grid = $("#legends-grid");
+
+            $.ajax({
+                url: url,
+                method: config.api.viewGroupNodes.method,
+                data: {
+                    viewGroupId: viewGroupId,
+                    lang: lang
+                },
+                success: function (data) {
+                    $grid.jqGrid('clearGridData');
+                    $grid.jqGrid('setGridParam', {
+                        datatype: 'local',
+                        data: data
+                    }).trigger("reloadGrid");
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error fetching view group nodes:", error);
+                }
+            });
+        }
+
+        // Initial Load
+        initGrid(window.i18n.currentLang);
+
+        // Listen for filter change event
+        $(document).on('viewGroupChanged', function (e, viewGroupId) {
+            currentViewGroupId = viewGroupId;
+            if (!viewGroupId) {
+                $("#legends-grid").jqGrid('clearGridData');
+                return;
+            }
+            loadData(viewGroupId, window.i18n.currentLang);
+        });
+
+        // Listen for language change event
+        $(document).on('languageChanged', function (e, lang) {
+            initGrid(lang);
+        });
+
+        // Handle Date Switch Toggle (Delegated to document to handle re-created elements)
+        $(document).on('change', '.switch input', function () {
+            var isChecked = $(this).is(':checked');
+            var rowId = $(this).data('rowid');
+            var $row = $('#' + rowId);
+            var $inputs = $row.find('.date-input');
+
+            if (isChecked) {
+                $inputs.show().prop('disabled', false).datepicker({
+                    dateFormat: "dd/mm/yy"
+                });
+            } else {
+                $inputs.hide().prop('disabled', true).val('').datepicker("destroy");
+            }
+        });
+    })();
+</script>

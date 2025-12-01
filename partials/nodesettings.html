@@ -1,0 +1,157 @@
+<div class="node-settings-content">
+    <table id="nodes-grid"></table>
+    <div id="nodes-grid-pager"></div>
+</div>
+
+<script>
+    (function () {
+        var config = window.parent.APP_CONFIG;
+        var currentViewGroupID = config.currentViewGroupID;
+        var lang = window.i18n.currentLang; // 'en-US' or 'ar-AE'
+
+        console.log("NodeSettings loaded. Lang:", lang);
+
+        if (!currentViewGroupID) {
+            $('.node-settings-content').html('<div class="alert alert-warning" style="padding: 10px; color: #856404; background-color: #fff3cd; border-color: #ffeeba;">' + window.i18n.get('datasource.select') + '</div>');
+            return;
+        }
+
+        var $grid = $("#nodes-grid");
+
+        // Custom Color Picker Element
+        function colorPickElement(value, options) {
+            var color = value || '#ffffff';
+            // Ensure it's a valid hex 
+            if (!color.startsWith('#')) color = '#ffffff';
+            var $el = $('<input type="color" value="' + color + '" style="width:100%;" />');
+            return $el;
+        }
+        function colorPickValue($elem, operation, value) {
+            if (operation === 'get') {
+                return $elem.val();
+            } else if (operation === 'set') {
+                $elem.val(value);
+            }
+        }
+
+        // Unformat function to get raw value from cell
+        function colorUnformat(cellvalue, options, cell) {
+            // Extract color from data attribute
+            var color = $('div', cell).attr('data-color');
+            return color || '#ffffff';
+        }
+
+        // Fetch Group Nodes for Dropdown
+        $.ajax({
+            url: config.api.groupNodes.path,
+            method: config.api.groupNodes.method,
+            data: { lang: lang },
+            success: function (groupNodesData) {
+                // Build value string for jqGrid select: "ID:Name;ID:Name"
+                var groupNodeOptions = "";
+                if (Array.isArray(groupNodesData)) {
+                    var options = groupNodesData.map(function (item) {
+                        // Assuming item has GroupNodeID and GroupNodeName (or similar)
+                        // Adjust property names based on actual API response if needed
+                        // Based on sp_GroupNodeList, it likely returns GroupNodeID and GroupNodeName (localized)
+                        return item.GroupNodeID + ":" + (item.GroupNodeName || item.GroupNodeEn || item.GroupNodeAr || item.GroupNodeID);
+                    });
+                    groupNodeOptions = options.join(";");
+                }
+
+                initGrid(groupNodeOptions);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error fetching group nodes:", error);
+                alert(window.i18n.get('nodesettings.error.fetchGroupNodes'));
+                // Initialize grid without dropdown options if fetch fails
+                initGrid("");
+            }
+        });
+
+        function initGrid(groupNodeOptions) {
+            var gridOptions = window.AppUtils.getGridConfig({
+                url: config.api.viewGroupNodes.path,
+                datatype: "json",
+                loadonce: true, // Enable client-side pagination
+                mtype: "GET",
+                postData: {
+                    viewGroupId: currentViewGroupID,
+                    lang: lang
+                },
+                colModel: [
+                    { label: window.i18n.get('nodesettings.col.nodeId'), name: 'NodeID', key: true, hidden: true },
+                    { label: window.i18n.get('nodesettings.col.columnId'), name: 'ColumnID', width: 80, editable: false },
+                    {
+                        label: window.i18n.get('nodesettings.col.groupNode'), name: 'GroupNodeID', width: 150, editable: true,
+                        edittype: 'select',
+                        editoptions: { value: groupNodeOptions },
+                        formatter: 'select'
+                    },
+                    { label: window.i18n.get('nodesettings.col.englishName'), name: 'ColumnEn', width: 200, editable: true },
+                    { label: window.i18n.get('nodesettings.col.arabicName'), name: 'ColumnAr', width: 200, editable: true },
+                    {
+                        label: window.i18n.get('nodesettings.col.color'), name: 'ColumnColor', width: 100, editable: true, align: 'center',
+                        edittype: 'custom',
+                        editoptions: {
+                            custom_element: colorPickElement,
+                            custom_value: colorPickValue
+                        },
+                        formatter: function (cellvalue, options, rowObject) {
+                            var color = cellvalue || '#ffffff';
+                            // Only show the color box, no text. Store color in data-color for unformat.
+                            return '<div data-color="' + color + '" style="width:20px;height:20px;background-color:' + color + ';display:inline-block;border:1px solid #ccc;vertical-align:middle;"></div>';
+                        },
+                        unformat: colorUnformat
+                    },
+                    {
+                        label: window.i18n.get('nodesettings.col.actions'), name: 'actions', width: 80, fixed: true, sortable: false, resize: false,
+                        formatter: 'actions',
+                        formatoptions: {
+                            keys: true, // Enter to save
+                            editbutton: true,
+                            delbutton: false,
+                            editformbutton: false,
+                            url: config.api.nodeUpdate.path,
+                            mtype: 'POST',
+                            // Handle successful save
+                            onSuccess: function (jqXHR) {
+                                var response = JSON.parse(jqXHR.responseText);
+                                return response.success;
+                            },
+                            // Handle error
+                            onError: function (rowid, jqXHR, textStatus) {
+                                console.error("Save failed:", textStatus);
+                                alert(window.i18n.get('nodesettings.error.save'));
+                            }
+                        }
+                    }
+                ],
+                autowidth: true,
+                shrinkToFit: true,
+                height: 'auto',
+                pager: "#nodes-grid-pager",
+                // Disable cell editing
+                cellEdit: false,
+                // Map 'id' to 'NodeID' for the backend
+                prmNames: { id: "NodeID" },
+                loadComplete: function () {
+                    // Hide pager if only one page
+                    var $this = $(this);
+                    if ($this.getGridParam('lastpage') <= 1) {
+                        $("#nodes-grid-pager").hide();
+                    } else {
+                        $("#nodes-grid-pager").show();
+                    }
+                },
+                loadError: function (xhr, status, error) {
+                    console.error("Grid load error:", error);
+                    alert(window.i18n.get('nodesettings.error.load'));
+                }
+            });
+
+            $grid.jqGrid(gridOptions);
+        }
+
+    })();
+</script>

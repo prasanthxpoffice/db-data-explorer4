@@ -1,0 +1,151 @@
+<div class="relation-settings-content">
+    <table id="relations-grid"></table>
+    <div id="relations-grid-pager"></div>
+</div>
+
+<script>
+    (function () {
+        var config = window.parent.APP_CONFIG;
+        var currentViewGroupID = config.currentViewGroupID;
+        var lang = window.i18n.currentLang; // 'en-US' or 'ar-AE'
+
+        console.log("RelationSettings loaded. Lang:", lang);
+
+        if (!currentViewGroupID) {
+            $('.relation-settings-content').html('<div class="alert alert-warning" style="padding: 10px; color: #856404; background-color: #fff3cd; border-color: #ffeeba;">' + window.i18n.get('datasource.select') + '</div>');
+            return;
+        }
+
+        var $grid = $("#relations-grid");
+
+        // Fetch View Group Nodes for Dropdown
+        $.ajax({
+            url: config.api.viewGroupNodes.path,
+            method: config.api.viewGroupNodes.method,
+            data: {
+                viewGroupId: currentViewGroupID,
+                lang: lang
+            },
+            success: function (viewGroupNodesData) {
+                // Build value string for jqGrid select: "ID:Name;ID:Name"
+                var viewGroupNodeOptions = "";
+                if (Array.isArray(viewGroupNodesData)) {
+                    var options = viewGroupNodesData.map(function (item) {
+                        // Assuming item has NodeID and NodeName (or similar localized name)
+                        return item.NodeID + ":" + (item.NodeName || item.NodeEn || item.NodeAr || item.NodeID);
+                    });
+                    // Add None option to allow clearing the selection
+                    options.unshift(":None");
+                    viewGroupNodeOptions = options.join(";");
+                } else {
+                    viewGroupNodeOptions = ":None";
+                }
+
+                initGrid(viewGroupNodeOptions);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error fetching view group nodes:", error);
+                // Initialize grid without dropdown options if fetch fails
+                initGrid(":None");
+            }
+        });
+
+        function initGrid(viewGroupNodeOptions) {
+            var gridOptions = window.AppUtils.getGridConfig({
+                url: config.api.relationsList.path,
+                datatype: "json",
+                loadonce: true, // Enable client-side pagination
+                mtype: "GET",
+                postData: {
+                    ViewGroupID: currentViewGroupID,
+                    OnlyActive: false,
+                    lang: lang
+                },
+                colModel: [
+                    { label: 'Relation ID', name: 'RelationID', key: true, hidden: true },
+                    { label: 'View Group ID', name: 'ViewGroupID', hidden: true },
+
+                    // Source
+                    { label: window.i18n.get('relationsettings.col.sourceColumn'), name: 'SourceColumnName', width: 120, editable: false },
+                    { label: 'Source Node ID', name: 'SourceNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+
+                    // Search
+                    { label: window.i18n.get('relationsettings.col.searchColumn'), name: 'SearchColumnName', width: 120, editable: false },
+                    { label: 'Search Node ID', name: 'SearchNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+
+                    // Display
+                    { label: window.i18n.get('relationsettings.col.displayColumn'), name: 'DisplayColumnName', width: 120, editable: false },
+                    { label: 'Display Node ID', name: 'DisplayNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+
+                    // Relation
+                    {
+                        label: 'Relation Entity',
+                        name: 'RelationNodeID',
+                        width: 150,
+                        hidden: false,
+                        editable: true,
+                        edittype: 'select',
+                        editoptions: { value: viewGroupNodeOptions },
+                        formatter: 'select'
+                    },
+
+                    { label: window.i18n.get('relationsettings.col.englishName'), name: 'RelationEn', width: 150, editable: true, hidden: false },
+                    { label: window.i18n.get('relationsettings.col.arabicName'), name: 'RelationAr', width: 150, editable: true, hidden: false },
+
+                    {
+                        label: window.i18n.get('relationsettings.col.active'), name: 'isActive', width: 60, align: 'center', editable: true,
+                        edittype: 'checkbox', editoptions: { value: "true:false" },
+                        formatter: 'checkbox'
+                    },
+                    {
+                        label: window.i18n.get('nodesettings.col.actions'), name: 'actions', width: 80, fixed: true, sortable: false, resize: false,
+                        formatter: 'actions',
+                        formatoptions: {
+                            keys: true,
+                            editbutton: true,
+                            delbutton: false,
+                            editformbutton: false,
+                            url: config.api.relationUpdate.path,
+                            mtype: 'POST',
+                            onSuccess: function (jqXHR) {
+                                var response = JSON.parse(jqXHR.responseText);
+                                return response.success;
+                            },
+                            onError: function (rowid, jqXHR, textStatus) {
+                                console.error("Save failed:", textStatus);
+                                alert(window.i18n.get('nodesettings.error.save'));
+                            }
+                        }
+                    }
+                ],
+                autowidth: true,
+                shrinkToFit: true,
+                height: 'auto',
+                pager: "#relations-grid-pager",
+                cellEdit: false,
+                prmNames: { id: "RelationID" },
+                loadComplete: function () {
+                    var $this = $(this);
+                    if ($this.getGridParam('lastpage') <= 1) {
+                        $("#relations-grid-pager").hide();
+                    } else {
+                        $("#relations-grid-pager").show();
+                    }
+                    // Reposition modal if it exists
+                    var $dialog = $("#relation-settings-modal");
+                    if ($dialog.hasClass('ui-dialog-content') && $dialog.dialog('isOpen')) {
+                        $dialog.dialog('option', 'position', { my: "center", at: "center", of: window });
+                    }
+                },
+                loadError: function (xhr, status, error) {
+                    console.error("Grid load error:", error);
+                    alert(window.i18n.get('nodesettings.error.load'));
+                }
+            });
+
+            $grid.jqGrid(gridOptions);
+            $grid.jqGrid('filterToolbar', { stringResult: true, searchOnEnter: false, defaultSearch: "cn" });
+        }
+
+    })();
+</script>

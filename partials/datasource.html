@@ -1,0 +1,67 @@
+<div class="filter-panel-content">
+    <div class="form-group">
+        <select id="view-groups-dropdown" style="width: 100%; padding: 5px;">
+            <option value="" data-i18n="datasource.loading">Loading...</option>
+        </select>
+    </div>
+</div>
+
+<script>
+    (function () {
+        // Access config from parent window
+        var config = window.parent.APP_CONFIG;
+        if (!config || !config.api || !config.api.viewGroups) {
+            console.error("APP_CONFIG or viewGroups API not found");
+            $('#view-groups-dropdown').html('<option value="">' + window.i18n.get('datasource.errorConfig') + '</option>');
+            return;
+        }
+
+        var url = config.api.viewGroups.path;
+        var currentLang = window.i18n ? window.i18n.currentLang : 'en-US';
+
+        $.ajax({
+            url: url,
+            method: config.api.viewGroups.method,
+            data: { lang: currentLang },
+            success: function (response) {
+                var $dropdown = $('#view-groups-dropdown');
+                $dropdown.empty();
+
+                // Add default option with data-i18n for dynamic translation
+                $dropdown.append('<option value="" data-i18n="datasource.select">' + window.i18n.get('datasource.select') + '</option>');
+
+                if (Array.isArray(response)) {
+                    response.forEach(function (item) {
+                        // Use specific columns from SP: ViewGroupID, ViewGroupName
+                        var value = item.ViewGroupID;
+                        var text = item.ViewGroupName;
+
+                        $dropdown.append($('<option>', {
+                            value: value,
+                            text: text
+                        }));
+                    });
+                } else {
+                    console.error("Expected array response, got:", response);
+                    $dropdown.append('<option value="">' + window.i18n.get('datasource.errorData') + '</option>');
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error("Error fetching view groups:", error);
+                $('#view-groups-dropdown').html('<option value="">' + window.i18n.get('datasource.errorData') + '</option>');
+            }
+        });
+
+        // Trigger event on change
+        $('#view-groups-dropdown').on('change', function () {
+            var selectedId = $(this).val();
+
+            // Store globally for other components (like Node Settings)
+            if (window.parent && window.parent.APP_CONFIG) {
+                window.parent.APP_CONFIG.currentViewGroupID = selectedId;
+            }
+
+            $(document).trigger('viewGroupChanged', [selectedId]);
+        });
+    })();
+</script>

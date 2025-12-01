@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Graph</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    window.APP_CONFIG = {
+      api: {
+        health: { path: "http://localhost:5050/graphapi/health", method: "GET" },
+        viewGroups: { path: "http://localhost:5050/graphapi/viewgroups", method: "GET" },
+        viewGroupNodes: { path: "http://localhost:5050/graphapi/viewgroupnodes", method: "GET" },
+        nodeDataAutoComplete: { path: "http://localhost:5050/graphapi/nodedataautocomplete", method: "GET" },
+        groupNodes: { path: "http://localhost:5050/graphapi/groupnodes", method: "GET" },
+        nodeUpdate: { path: "http://localhost:5050/graphapi/nodeupdate", method: "POST" },
+        relationsList: { path: "http://localhost:5050/graphapi/relationslist", method: "GET" },
+        relationUpdate: { path: "http://localhost:5050/graphapi/relationupdate", method: "POST" }
+      },
+      defaults: {
+
+      },
+      Lang: "en-US",
+      showLanguageSelector: true,
+      userId: "demo-user",
+    };
+  </script>
+  <iframe src="index.html"></iframe>
+</body>
+
+</html>

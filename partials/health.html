@@ -1,0 +1,41 @@
+<div class="health-panel-content" style="padding: 10px; border-bottom: 1px solid #ccc;">
+    <h3 data-i18n="health.title">System Health</h3>
+    <div id="health-status" data-i18n="health.checking">Checking...</div>
+    <div id="health-time" style="font-size: 0.8em; color: #666;"></div>
+    <button id="btn-refresh-health" data-i18n="health.refresh">Refresh</button>
+</div>
+
+<script>
+    (function () {
+        function checkHealth() {
+            // Access config from parent window
+            var config = window.parent.APP_CONFIG;
+            if (!config) {
+                console.error("APP_CONFIG not found in parent window");
+                return;
+            }
+
+            var url = config.api.health.path;
+
+            $('#health-status').text(window.i18n.get('health.checking')).removeClass('error success');
+
+            $.ajax({
+                url: url,
+                method: config.api.health.method,
+                success: function (response) {
+                    $('#health-status').text(window.i18n.get('health.online') + response.status).addClass('success').css('color', 'green');
+                    $('#health-time').text(window.i18n.get('health.serverTime') + response.utc);
+                },
+                error: function (xhr, status, error) {
+                    $('#health-status').text(window.i18n.get('health.offline') + error).addClass('error').css('color', 'red');
+                    $('#health-time').text('');
+                }
+            });
+        }
+
+        $('#btn-refresh-health').on('click', checkHealth);
+
+        // Initial check
+        checkHealth();
+    })();
+</script>
