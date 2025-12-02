@@ -77,10 +77,24 @@
                     $.each(rowIds, function (index, rowId) {
                         $grid.jqGrid('setSelection', rowId, false);
                     });
+                },
+                onSelectRow: function () {
+                    triggerSelectionChange();
+                },
+                onSelectAll: function () {
+                    triggerSelectionChange();
                 }
             });
 
             $grid.jqGrid(gridOptions);
+
+            function triggerSelectionChange() {
+                var selectedIds = $grid.jqGrid('getGridParam', 'selarrrow');
+                // Trigger global event for Graph to handle
+                if (window.Graph && window.Graph.setVisibleLegendIds) {
+                    window.Graph.setVisibleLegendIds(selectedIds);
+                }
+            }
 
             // Reload data if a group is selected
             if (currentViewGroupId) {

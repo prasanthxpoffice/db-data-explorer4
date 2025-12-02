@@ -48,7 +48,8 @@
             colors: colors,         // Array<String>
             expandedIds: expandedIds, // Array<Int>
             pieImage: null,         // String (Always present for stability)
-            flags: 0                // Int (Bitmask)
+            flags: 0,               // Int (Bitmask)
+            legendId: 0             // Int (For filtering)
         };
     }
 
@@ -109,6 +110,18 @@
                         style: {
                             'border-color': '#333',
                             'border-width': 2
+                        }
+                    },
+                    {
+                        selector: 'node.hidden',
+                        style: {
+                            'display': 'none'
+                        }
+                    },
+                    {
+                        selector: 'edge.hidden',
+                        style: {
+                            'display': 'none'
                         }
                     },
                     {
@@ -371,6 +384,9 @@
                                         []
                                     );
 
+                                    // Set Legend ID (NodeID from DB)
+                                    newNodeData.legendId = parseInt(node.NodeID) || 0;
+
                                     Graph.updatePieData(newNodeData);
 
                                     nodesToAdd.push({
@@ -491,6 +507,11 @@
                                 [item.TargetNodeColor || '#666'],
                                 []
                             );
+
+                            // Set Legend ID (TargetNodeID from DB)
+                            newNodeData.legendId = parseInt(item.TargetNodeID) || 0;
+
+                            Graph.updatePieData(newNodeData);
 
                             Graph.updatePieData(newNodeData);
 
@@ -774,6 +795,35 @@
             Graph.expandableNodeIds = new Set();
             Graph.isExpanding = false;
             if (cy) cy.elements().remove();
+        },
+
+        setVisibleLegendIds: function (visibleIds) {
+            if (!cy) return;
+
+            var visibleSet = new Set(visibleIds.map(function (id) { return parseInt(id); }));
+
+            cy.batch(function () {
+                cy.nodes().forEach(function (node) {
+                    var legendId = node.data('legendId');
+                    // If legendId is 0 or undefined, we default to visible (or hidden? usually visible)
+                    // Assuming all valid nodes have a legendId.
+                    if (legendId && !visibleSet.has(legendId)) {
+                        node.addClass('hidden');
+                        // Hide connected edges too
+                        node.connectedEdges().addClass('hidden');
+                    } else {
+                        node.removeClass('hidden');
+                        // Show connected edges if both source and target are visible
+                        node.connectedEdges().forEach(function (edge) {
+                            var source = edge.source();
+                            var target = edge.target();
+                            if (!source.hasClass('hidden') && !target.hasClass('hidden')) {
+                                edge.removeClass('hidden');
+                            }
+                        });
+                    }
+                });
+            });
         }
     };
 
