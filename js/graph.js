@@ -255,7 +255,7 @@
                 var isFirstLoad = (totalNodes === newNodes) || (totalNodes < 10);
 
                 var shouldAnimate = true;
-                if (validElements.length > 100) {
+                if (validElements.length > 100 || Graph.autoExpand) {
                     shouldAnimate = false;
                 }
 
@@ -314,15 +314,17 @@
                         var layoutInstance = cy.layout(layoutConfig);
 
                         layoutInstance.one('layoutstop', function () {
-                            // Smart Fit: Only fit if the new nodes are off-screen or graph grew significantly
-                            cy.animate({
-                                fit: {
-                                    eles: cy.elements(),
-                                    padding: 50
-                                },
-                                duration: 500,
-                                easing: 'ease-in-out-cubic'
-                            });
+                            // Smart Fit: Only fit if NOT auto-expanding (we fit at the end)
+                            if (!Graph.autoExpand) {
+                                cy.animate({
+                                    fit: {
+                                        eles: cy.elements(),
+                                        padding: 50
+                                    },
+                                    duration: 500,
+                                    easing: 'ease-in-out-cubic'
+                                });
+                            }
                         });
                         layoutInstance.run();
                     }
@@ -809,6 +811,7 @@
                     if (Graph.autoExpand) {
                         Graph.setAutoExpand(false);
                         $('#setting-auto-expand').prop('checked', false);
+                        cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
                         alert("All nodes expanded");
                     } else {
                         alert(window.i18n.get('graph.noUnexpanded'));
@@ -921,10 +924,11 @@
                         Graph.autoExpandCount++;
                         var maxBatches = parseInt($('#setting-max-batches').val()) || 10;
                         if (Graph.autoExpandCount < maxBatches) {
-                            setTimeout(Graph.expandNextBatch, 500);
+                            setTimeout(Graph.expandNextBatch, 50);
                         } else {
                             Graph.setAutoExpand(false);
                             $('#setting-auto-expand').prop('checked', false);
+                            cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
                             alert("Auto-expansion paused after " + maxBatches + " batches.");
                         }
                     }
