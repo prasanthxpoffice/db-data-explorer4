@@ -648,3 +648,4 @@ button.btn-secondary:hover:not(:disabled) {
 .stat-separator {
     color: #ccc;
 }
+#sidebar-content { padding-bottom: 40px; }

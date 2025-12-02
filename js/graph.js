@@ -195,6 +195,12 @@
                 var node = evt.target;
                 Graph.expandNodes([node]);
             });
+
+            // Layout Switcher
+            $('#setting-layout').on('change', function () {
+                var layoutName = $(this).val();
+                Graph.changeLayout(layoutName);
+            });
         },
 
         normalizeId: function (id) {
@@ -284,18 +290,31 @@
                     shouldAnimate = false;
                 }
 
+                var layoutName = $('#setting-layout').val() || 'cose';
+
                 var layoutConfig = {
-                    name: 'cose',
+                    name: layoutName,
                     animate: shouldAnimate,
                     randomize: false,
                     fit: false,
-                    idealEdgeLength: 100,
-                    nodeRepulsion: 400000,
-                    numIter: 1000,
-                    padding: 50,
-                    componentSpacing: 40,
-                    nodeDimensionsIncludeLabels: true
+                    padding: 50
                 };
+
+                // Specific configs for different layouts
+                if (layoutName === 'cose') {
+                    layoutConfig.idealEdgeLength = 100;
+                    layoutConfig.nodeRepulsion = 400000;
+                    layoutConfig.numIter = 1000;
+                    layoutConfig.componentSpacing = 40;
+                    layoutConfig.nodeDimensionsIncludeLabels = true;
+                } else if (layoutName === 'concentric') {
+                    layoutConfig.minNodeSpacing = 50;
+                    layoutConfig.equidistant = false;
+                    layoutConfig.avoidOverlap = true;
+                } else if (layoutName === 'breadthfirst') {
+                    layoutConfig.directed = true;
+                    layoutConfig.spacingFactor = 1.75;
+                }
 
                 if (isFirstLoad) {
                     layoutConfig.randomize = true;
@@ -357,6 +376,34 @@
             } catch (e) {
                 console.error("Layout failed:", e);
             }
+        },
+
+        changeLayout: function (name) {
+            if (!cy) return;
+            var layoutConfig = {
+                name: name,
+                animate: true,
+                animationDuration: 500,
+                fit: true,
+                padding: 50
+            };
+
+            if (name === 'cose') {
+                layoutConfig.idealEdgeLength = 100;
+                layoutConfig.nodeRepulsion = 400000;
+                layoutConfig.numIter = 1000;
+                layoutConfig.componentSpacing = 40;
+                layoutConfig.nodeDimensionsIncludeLabels = true;
+            } else if (name === 'concentric') {
+                layoutConfig.minNodeSpacing = 50;
+                layoutConfig.equidistant = false;
+                layoutConfig.avoidOverlap = true;
+            } else if (name === 'breadthfirst') {
+                layoutConfig.directed = true;
+                layoutConfig.spacingFactor = 1.75;
+            }
+
+            cy.layout(layoutConfig).run();
         },
 
         addNodes: function (nodesData) {

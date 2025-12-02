@@ -33,70 +33,89 @@
                 <option value="20">20</option>
                 <option value="50">50</option>
                 <option value="100" selected>100</option>
-                <!-- Content loaded dynamically -->
+            </select>
         </div>
-        <div id="relation-settings-modal" title="Relation Settings" style="display:none;">
-            <!-- Content loaded dynamically -->
-        </div>
+    </div>
 
-        <script>
-            (function () {
-                // Initialize Dialogs using Utility
-                if (window.AppUtils && window.AppUtils.createModal) {
-                    window.AppUtils.createModal("#node-settings-modal", { width: 900, height: 'auto' });
-                    window.AppUtils.createModal("#relation-settings-modal", { width: 1150, height: 'auto' });
+    <!-- Layout Settings -->
+    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
+        <h4 data-i18n="settings.layoutTitle" style="margin: 0 0 10px 0; color: #555;">Layout Settings</h4>
+        <div class="form-group">
+            <label for="setting-layout" data-i18n="settings.layoutLabel"
+                style="display: block; margin-bottom: 5px;">Layout Algorithm</label>
+            <select id="setting-layout" style="width: 100%; padding: 5px;">
+                <option value="cose" data-i18n="layout.cose" selected>Cose (Physics)</option>
+                <option value="grid" data-i18n="layout.grid">Grid</option>
+                <option value="circle" data-i18n="layout.circle">Circle</option>
+                <option value="concentric" data-i18n="layout.concentric">Concentric</option>
+                <option value="breadthfirst" data-i18n="layout.breadthfirst">Breadthfirst (Tree)</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="relation-settings-modal" title="Relation Settings" style="display:none;">
+        <!-- Content loaded dynamically -->
+    </div>
+
+    <script>
+        (function () {
+            // Initialize Dialogs using Utility
+            if (window.AppUtils && window.AppUtils.createModal) {
+                window.AppUtils.createModal("#node-settings-modal", { width: 900, height: 'auto' });
+                window.AppUtils.createModal("#relation-settings-modal", { width: 1150, height: 'auto' });
+            } else {
+                console.error("AppUtils.createModal not found");
+            }
+
+            function openModal(modalId, url, titleKey, defaultTitle) {
+                var $modal = $(modalId);
+                var bust = '?t=' + new Date().getTime();
+
+                $.get(url + bust, function (data) {
+                    $modal.html(data);
+
+                    if (window.i18n && window.i18n.applyLanguage) {
+                        window.i18n.applyLanguage(window.i18n.currentLang);
+                    }
+
+                    var title = window.i18n ? window.i18n.get(titleKey) : defaultTitle;
+                    if ($modal.hasClass('ui-dialog-content')) {
+                        $modal.dialog('option', 'title', title);
+                        $modal.dialog('open');
+
+                        // Force center position after a slight delay to allow for rendering
+                        setTimeout(function () {
+                            $modal.dialog('option', 'position', { my: "center", at: "center", of: window });
+                        }, 100);
+                    }
+                }).fail(function () {
+                    console.error("Failed to load " + url);
+                    alert(window.i18n.get('settings.errorLoading'));
+                });
+            }
+
+            $('#btn-open-nodes-settings').on('click', function () {
+                openModal('#node-settings-modal', 'partials/nodesettings.html', 'nodesettings.title', 'Entity Settings');
+            });
+
+            $('#btn-open-relations-settings').on('click', function () {
+                openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
+            });
+
+            $('#setting-auto-expand').on('change', function () {
+                var enabled = $(this).is(':checked');
+                if (window.Graph && window.Graph.setAutoExpand) {
+                    window.Graph.setAutoExpand(enabled);
+                }
+            });
+
+            $('#btn-expand-next').on('click', function () {
+                if (window.Graph && window.Graph.expandNextBatch) {
+                    window.Graph.expandNextBatch();
                 } else {
-                    console.error("AppUtils.createModal not found");
+                    console.error("Graph.expandNextBatch not found");
                 }
-
-                function openModal(modalId, url, titleKey, defaultTitle) {
-                    var $modal = $(modalId);
-                    var bust = '?t=' + new Date().getTime();
-
-                    $.get(url + bust, function (data) {
-                        $modal.html(data);
-
-                        if (window.i18n && window.i18n.applyLanguage) {
-                            window.i18n.applyLanguage(window.i18n.currentLang);
-                        }
-
-                        var title = window.i18n ? window.i18n.get(titleKey) : defaultTitle;
-                        if ($modal.hasClass('ui-dialog-content')) {
-                            $modal.dialog('option', 'title', title);
-                            $modal.dialog('open');
-
-                            // Force center position after a slight delay to allow for rendering
-                            setTimeout(function () {
-                                $modal.dialog('option', 'position', { my: "center", at: "center", of: window });
-                            }, 100);
-                        }
-                    }).fail(function () {
-                        console.error("Failed to load " + url);
-                        alert(window.i18n.get('settings.errorLoading'));
-                    });
-                }
-
-                $('#btn-open-nodes-settings').on('click', function () {
-                    openModal('#node-settings-modal', 'partials/nodesettings.html', 'nodesettings.title', 'Entity Settings');
-                });
-
-                $('#btn-open-relations-settings').on('click', function () {
-                    openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
-                });
-
-                $('#setting-auto-expand').on('change', function () {
-                    var enabled = $(this).is(':checked');
-                    if (window.Graph && window.Graph.setAutoExpand) {
-                        window.Graph.setAutoExpand(enabled);
-                    }
-                });
-
-                $('#btn-expand-next').on('click', function () {
-                    if (window.Graph && window.Graph.expandNextBatch) {
-                        window.Graph.expandNextBatch();
-                    } else {
-                        console.error("Graph.expandNextBatch not found");
-                    }
-                });
-            })();
-        </script>
+            });
+        })();
+    </script>
+</div>

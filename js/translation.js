@@ -85,7 +85,14 @@ const translations = {
         "relationsettings.col.sourceNodeId": "Source Node ID",
         "relationsettings.col.searchNodeId": "Search Node ID",
         "relationsettings.col.displayNodeId": "Display Node ID",
-        "relationsettings.col.relationEntity": "Relation Entity"
+        "relationsettings.col.relationEntity": "Relation Entity",
+        "settings.layoutTitle": "Layout Settings",
+        "settings.layoutLabel": "Layout Algorithm",
+        "layout.cose": "Cose (Physics)",
+        "layout.grid": "Grid",
+        "layout.circle": "Circle",
+        "layout.concentric": "Concentric",
+        "layout.breadthfirst": "Breadthfirst (Tree)"
     },
     "ar-AE": {
         "app.title": "مستكشف بيانات الرسم البياني",
@@ -167,13 +174,19 @@ const translations = {
         "graph.expansionFailed": "فشل التوسيع.",
         "settings.errorLoading": "خطأ في تحميل الإعدادات.",
         "settings.expandNext": "توسيع الدفعة التالية",
-        "search.failedLoad": "فشل تحميل العقد",
         "relationsettings.col.relationId": "معرف العلاقة",
         "relationsettings.col.viewGroupId": "معرف مجموعة العرض",
         "relationsettings.col.sourceNodeId": "معرف عقدة المصدر",
         "relationsettings.col.searchNodeId": "معرف عقدة البحث",
         "relationsettings.col.displayNodeId": "معرف عقدة العرض",
-        "relationsettings.col.relationEntity": "كيان العلاقة"
+        "relationsettings.col.relationEntity": "كيان العلاقة",
+        "settings.layoutTitle": "إعدادات التخطيط",
+        "settings.layoutLabel": "خوارزمية التخطيط",
+        "layout.cose": "Cose (فيزياء)",
+        "layout.grid": "شبكة",
+        "layout.circle": "دائرة",
+        "layout.concentric": "متحد المركز",
+        "layout.breadthfirst": "الاتساع أولاً (شجرة)"
     }
 };
 
