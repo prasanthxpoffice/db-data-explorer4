@@ -1,25 +1,74 @@
 (function () {
     var cy = null;
 
+    // Optimization: String Interner (Symbol Table)
+    var Interner = {
+        map: new Map(), // String -> Int
+        pool: [],       // Int -> String
+        get: function (str) {
+            if (str === null || str === undefined) return 0;
+            var s = String(str).trim();
+            if (s === "") return 0;
+
+            var id = Interner.map.get(s);
+            if (id !== undefined) return id;
+
+            id = Interner.pool.length + 1;
+            Interner.map.set(s, id);
+            Interner.pool.push(s);
+            return id;
+        },
+        resolve: function (id) {
+            if (!id || id <= 0) return null;
+            return Interner.pool[id - 1];
+        },
+        clear: function () {
+            Interner.map = new Map();
+            Interner.pool = [];
+        }
+    };
+
+    // Optimization: Bitwise Flags
+    var FLAGS = {
+        EXPANDED: 1,
+        HAS_PIE: 2
+    };
+
+    // Optimization: Shape Stabilization (Factory)
+    // Ensures all Node Data objects have the exact same Hidden Class
+    function createNodeData(id, label, color, group, value, date, allIds, colors, expandedIds) {
+        return {
+            id: id,                 // String (for Cytoscape)
+            label: label,           // String
+            color: color,           // String
+            groupNodeId: group,     // Int
+            nodeValueId: value,     // Int
+            nodeValueDate: date,    // String
+            allIds: allIds,         // Array<Int>
+            colors: colors,         // Array<String>
+            expandedIds: expandedIds, // Array<Int>
+            pieImage: null,         // String (Always present for stability)
+            flags: 0                // Int (Bitmask)
+        };
+    }
+
     var Graph = {
-        nodeLookup: {}, // Map: GroupNodeID-NodeValueID -> Cytoscape Node ID
-        internalIdLookup: {}, // Map: NodeDataID (Internal) -> Cytoscape Node ID (Visual)
+        nodeLookup: new Map(), // Nested Map: GroupInt -> Map<ValueInt, NodeInt>
+        internalIdLookup: new Map(), // Map: NodeDataInt (Internal) -> NodeInt (Visual)
+        idSets: new Map(), // Map: NodeInt -> Set<InternalInt>
         svgCache: {},   // Map: ColorKey -> SVG Data URI
-        edgeLookup: new Set(), // Set: SourceID-TargetID (Visual IDs)
-        expandableNodeIds: new Set(), // Set: Visual Node IDs that have unexpanded data
+        adjacencyList: new Map(), // Map: SourceInt -> Set<TargetInt>
+        expandableNodeIds: new Set(), // Set: NodeInt
+        isExpanding: false, // Mutex
 
         init: function (containerId) {
-            Graph.nodeLookup = {};
-            Graph.internalIdLookup = {};
-            Graph.svgCache = {};
-            Graph.edgeLookup = new Set();
-            Graph.expandableNodeIds = new Set();
+            Graph.clear();
 
             cy = cytoscape({
                 container: $(containerId),
-                textureOnViewport: true, // Optimization: Texture during pan/zoom
-                hideEdgesOnViewport: true, // Optimization: Hide edges during fast pan/zoom
-                pixelRatio: 1, // Optimization: Enforce 1.0 pixel ratio for performance
+                textureOnViewport: true,
+                hideEdgesOnViewport: true,
+                pixelRatio: 1,
                 style: [
                     {
                         selector: 'node',
@@ -34,11 +83,17 @@
                             'color': '#fff',
                             'text-valign': 'center',
                             'text-halign': 'center',
+                            'min-zoomed-font-size': 8
+                        }
+                    },
+                    {
+                        selector: 'node:selected',
+                        style: {
                             'text-wrap': 'wrap',
                             'text-max-width': 100,
                             'text-outline-width': 2,
                             'text-outline-color': 'data(color)',
-                            'min-zoomed-font-size': 8 // Optimization: Hide text when zoomed out
+                            'z-index': 9999
                         }
                     },
                     {
@@ -46,7 +101,7 @@
                         style: {
                             'background-image': 'data(pieImage)',
                             'background-fit': 'cover',
-                            'background-opacity': 0 // Hide default background if pie is present
+                            'background-opacity': 0
                         }
                     },
                     {
@@ -63,7 +118,7 @@
                             'text-background-opacity': 1,
                             'text-background-color': '#fff',
                             'text-background-shape': 'round-rectangle',
-                            'min-zoomed-font-size': 8 // Optimization: Hide text when zoomed out
+                            'min-zoomed-font-size': 8
                         }
                     }
                 ],
@@ -75,15 +130,17 @@
         },
 
         normalizeId: function (id) {
-            return String(id).trim();
+            return id;
         },
 
-        // Helper to generate SVG Data URI for Pie Chart
         generatePieSVG: function (colors) {
             if (!colors || colors.length === 0) return null;
-            if (colors.length === 1) return null; // Single color, use default background
+            if (colors.length === 1) return null;
 
-            // Cache Key: Sorted colors joined by comma
+            if (Object.keys(Graph.svgCache).length > 1000) {
+                Graph.svgCache = {};
+            }
+
             var cacheKey = colors.slice().sort().join(',');
             if (Graph.svgCache[cacheKey]) {
                 return Graph.svgCache[cacheKey];
@@ -100,14 +157,11 @@
 
             colors.forEach(function (color) {
                 var endAngle = startAngle + sliceAngle;
-
-                // Calculate path coordinates
                 var x1 = center + radius * Math.cos(startAngle);
                 var y1 = center + radius * Math.sin(startAngle);
                 var x2 = center + radius * Math.cos(endAngle);
                 var y2 = center + radius * Math.sin(endAngle);
 
-                // SVG Path command
                 var d = [
                     "M", center, center,
                     "L", x1, y1,
@@ -128,158 +182,223 @@
             return dataUri;
         },
 
-        // Helper to update pie chart data based on colors array
         updatePieData: function (nodeData) {
             var colors = nodeData.colors || [];
-
             if (colors.length > 1) {
                 var svgDataUri = Graph.generatePieSVG(colors);
                 nodeData.pieImage = svgDataUri;
-                nodeData.color = 'transparent'; // Hide base color
+                nodeData.color = 'transparent';
+                nodeData.flags |= FLAGS.HAS_PIE; // Set Flag
             } else {
                 nodeData.pieImage = null;
-                // Keep original color if single
                 if (colors.length === 1) nodeData.color = colors[0];
+                nodeData.flags &= ~FLAGS.HAS_PIE; // Clear Flag
             }
         },
-
-        // Centralized Layout Helper
         runLayout: function (newElements) {
             if (!cy) return;
-
-            // If it's the very first load (total nodes == new nodes), run global layout
-            var isFirstLoad = (cy.nodes().length === newElements.length);
-
-            // Optimization: Smart Animation
-            // Disable animation for large batches to prevent UI freeze
-            var shouldAnimate = true;
-            if (newElements.length > 100) {
-                shouldAnimate = false;
-            }
-
-            if (isFirstLoad) {
-                var layout = cy.layout({
-                    name: 'cose',
-                    animate: shouldAnimate,
-                    randomize: true,
-                    fit: true,
-                    padding: 50
-                });
-                layout.run();
-            } else {
-                // Incremental Layout
-                // 1. Run layout ONLY on new elements + neighbors
-                var layoutEles = newElements.union(newElements.neighborhood());
-
-                var layout = layoutEles.layout({
-                    name: 'cose',
-                    animate: shouldAnimate,
-                    randomize: false, // Keep existing nodes stable
-                    fit: false // Don't fit the *layout* (we'll fit global later)
+            try {
+                // Safety: Filter out elements that might have been removed or are invalid
+                var validElements = newElements.filter(function (ele) {
+                    return ele.inside();
                 });
 
-                // 2. After layout finishes, smoothly fit the ENTIRE graph
-                layout.one('layoutstop', function () {
-                    cy.animate({
-                        fit: {
-                            eles: cy.elements(),
-                            padding: 50
-                        },
-                        duration: 500,
-                        easing: 'ease-in-out-cubic'
+                if (validElements.length === 0) return;
+
+                var totalNodes = cy.nodes().length;
+                var newNodes = validElements.nodes().length;
+
+                // Heuristic: If we are adding the first batch of nodes, or the graph is very small, run full layout.
+                var isFirstLoad = (totalNodes === newNodes) || (totalNodes < 10);
+
+                var shouldAnimate = true;
+                if (validElements.length > 100) {
+                    shouldAnimate = false;
+                }
+
+                var layoutConfig = {
+                    name: 'cose',
+                    animate: shouldAnimate,
+                    randomize: false,
+                    fit: false,
+                    idealEdgeLength: 100,
+                    nodeRepulsion: 400000,
+                    numIter: 1000,
+                    padding: 50,
+                    componentSpacing: 40,
+                    nodeDimensionsIncludeLabels: true
+                };
+
+                if (isFirstLoad) {
+                    layoutConfig.randomize = true;
+                    layoutConfig.fit = true;
+                    cy.layout(layoutConfig).run();
+                } else {
+                    // Incremental layout: Include neighbors to settle new nodes relative to existing ones
+                    var layoutEles = validElements.union(validElements.neighborhood());
+
+                    // Double check validity of layout elements and positions
+                    var validLayoutEles = layoutEles.filter(function (ele) {
+                        if (!ele.inside()) return false;
+                        if (ele.isNode()) {
+                            var pos = ele.position();
+                            if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') {
+                                // Fix invalid position
+                                ele.position({ x: 0, y: 0 });
+                            }
+                            return true;
+                        }
+                        return false; // Edges handled below
                     });
-                });
 
-                layout.run();
+                    // Strict Edge Check: Ensure both source and target are in the validLayoutEles set
+                    var validEdges = layoutEles.edges().filter(function (edge) {
+                        if (!edge.inside()) return false;
+                        var source = edge.source();
+                        var target = edge.target();
+                        // Check if source and target are valid AND included in our layout set
+                        var sourceValid = validLayoutEles.has(source);
+                        var targetValid = validLayoutEles.has(target);
+                        return sourceValid && targetValid;
+                    });
+
+                    // Combine valid nodes and valid edges
+                    var finalLayoutEles = validLayoutEles.union(validEdges);
+
+                    if (finalLayoutEles.length > 0) {
+                        // Use Core Layout with 'eles' option for better stability
+                        layoutConfig.eles = finalLayoutEles;
+                        var layoutInstance = cy.layout(layoutConfig);
+
+                        layoutInstance.one('layoutstop', function () {
+                            // Smart Fit: Only fit if the new nodes are off-screen or graph grew significantly
+                            cy.animate({
+                                fit: {
+                                    eles: cy.elements(),
+                                    padding: 50
+                                },
+                                duration: 500,
+                                easing: 'ease-in-out-cubic'
+                            });
+                        });
+                        layoutInstance.run();
+                    }
+                }
+            } catch (e) {
+                console.error("Layout failed:", e);
             }
         },
 
         addNodes: function (nodesData) {
             if (!cy) return;
 
-            var nodesToAdd = [];
-            var addedIds = new Set();
+            var chunkSize = 500;
+            var index = 0;
+            var total = nodesData.length;
+            var allNewEles = cy.collection();
 
-            // Optimization: Wrap updates in batch to prevent intermediate renders
-            cy.batch(function () {
-                nodesData.forEach(function (node) {
-                    var nodeId = Graph.normalizeId(node.NodeDataID);
-                    if (!nodeId) return;
+            function processChunk() {
+                var chunkEnd = Math.min(index + chunkSize, total);
+                var nodesToAdd = [];
+                var addedIds = new Set();
 
-                    // Lookup Key
-                    var lookupKey = node.GroupNodeID + '-' + node.NodeValueID;
-                    var existingNodeId = Graph.nodeLookup[lookupKey];
+                cy.batch(function () {
+                    for (var i = index; i < chunkEnd; i++) {
+                        var node = nodesData[i];
 
-                    if (existingNodeId) {
-                        // MERGE into existing node
-                        var existingNode = cy.getElementById(existingNodeId);
-                        if (existingNode.length > 0) {
-                            var data = existingNode.data();
+                        var nodeIdInt = Interner.get(node.NodeDataID);
+                        if (!nodeIdInt) continue;
 
-                            // Add ID if not present
-                            if (!data.allIds.includes(nodeId)) {
-                                data.allIds.push(nodeId);
-                                data.colors.push(node.ColumnColor || '#666');
+                        var groupIdInt = Interner.get(node.GroupNodeID);
+                        var valueIdInt = Interner.get(node.NodeValueID);
 
-                                // Update Pie Data
-                                Graph.updatePieData(data);
-                                existingNode.data(data); // Apply updates
+                        var groupMap = Graph.nodeLookup.get(groupIdInt);
+                        var existingNodeIdInt = groupMap ? groupMap.get(valueIdInt) : undefined;
 
-                                // Update Class
-                                if (data.pieImage) existingNode.addClass('has-pie');
-                                else existingNode.removeClass('has-pie');
+                        if (existingNodeIdInt) {
+                            // MERGE
+                            var existingNodeIdStr = Interner.resolve(existingNodeIdInt);
+                            var existingNode = cy.getElementById(existingNodeIdStr);
 
-                                // Mark as expandable since we added new data
-                                Graph.expandableNodeIds.add(existingNodeId);
+                            if (existingNode.length > 0) {
+                                var data = existingNode.data();
+                                var idSet = Graph.idSets.get(existingNodeIdInt);
 
-                                // Update Internal ID Lookup
-                                Graph.internalIdLookup[nodeId] = existingNodeId;
+                                if (!idSet.has(nodeIdInt)) {
+                                    data.allIds.push(nodeIdInt);
+                                    idSet.add(nodeIdInt);
+
+                                    data.colors.push(node.ColumnColor || '#666');
+                                    Graph.updatePieData(data);
+                                    existingNode.data(data);
+
+                                    // Check Flag for Class
+                                    if (data.flags & FLAGS.HAS_PIE) existingNode.addClass('has-pie');
+                                    else existingNode.removeClass('has-pie');
+
+                                    Graph.expandableNodeIds.add(existingNodeIdInt);
+                                    Graph.internalIdLookup.set(nodeIdInt, existingNodeIdInt);
+                                }
                             }
-                        }
-                    } else {
-                        // CREATE new node
-                        if (cy.getElementById(nodeId).length === 0 && !addedIds.has(nodeId)) {
-                            var newNodeData = {
-                                id: nodeId,
-                                label: node.NodeValue,
-                                color: node.ColumnColor || '#666',
-                                groupNodeId: node.GroupNodeID,
-                                nodeValueId: node.NodeValueID,
-                                nodeValueDate: node.NodeValueDate,
-                                isExpanded: false,
+                        } else {
+                            // CREATE
+                            if (!addedIds.has(nodeIdInt)) {
+                                var nodeIdStr = Interner.resolve(nodeIdInt);
 
-                                // Merging Properties
-                                allIds: [nodeId],
-                                colors: [node.ColumnColor || '#666'],
-                                expandedIds: [] // Track which internal IDs are expanded
-                            };
+                                if (cy.getElementById(nodeIdStr).length === 0) {
+                                    // Optimization: Use Factory
+                                    var newNodeData = createNodeData(
+                                        nodeIdStr,
+                                        node.NodeValue,
+                                        node.ColumnColor || '#666',
+                                        groupIdInt,
+                                        valueIdInt,
+                                        node.NodeValueDate,
+                                        [nodeIdInt],
+                                        [node.ColumnColor || '#666'],
+                                        []
+                                    );
 
-                            Graph.updatePieData(newNodeData);
+                                    Graph.updatePieData(newNodeData);
 
-                            nodesToAdd.push({
-                                group: 'nodes',
-                                data: newNodeData,
-                                classes: newNodeData.pieImage ? 'has-pie' : ''
-                            });
-                            addedIds.add(nodeId);
+                                    nodesToAdd.push({
+                                        group: 'nodes',
+                                        data: newNodeData,
+                                        classes: (newNodeData.flags & FLAGS.HAS_PIE) ? 'has-pie' : ''
+                                    });
+                                    addedIds.add(nodeIdInt);
 
-                            // Update Lookup
-                            Graph.nodeLookup[lookupKey] = nodeId;
+                                    if (!Graph.nodeLookup.has(groupIdInt)) {
+                                        Graph.nodeLookup.set(groupIdInt, new Map());
+                                    }
+                                    Graph.nodeLookup.get(groupIdInt).set(valueIdInt, nodeIdInt);
 
-                            // Update Internal ID Lookup
-                            Graph.internalIdLookup[nodeId] = nodeId;
-
-                            // Mark as expandable
-                            Graph.expandableNodeIds.add(nodeId);
+                                    Graph.internalIdLookup.set(nodeIdInt, nodeIdInt);
+                                    Graph.idSets.set(nodeIdInt, new Set([nodeIdInt]));
+                                    Graph.expandableNodeIds.add(nodeIdInt);
+                                }
+                            }
                         }
                     }
                 });
-            });
 
-            if (nodesToAdd.length > 0) {
-                var newEles = cy.add(nodesToAdd);
-                Graph.runLayout(newEles);
+                if (nodesToAdd.length > 0) {
+                    var chunkEles = cy.add(nodesToAdd);
+                    allNewEles = allNewEles.union(chunkEles);
+                }
+
+                index += chunkSize;
+
+                if (index < total) {
+                    requestAnimationFrame(processChunk);
+                } else {
+                    if (allNewEles.length > 0) {
+                        Graph.runLayout(allNewEles);
+                    }
+                }
             }
+
+            processChunk();
         },
 
         addExpansionResults: function (results) {
@@ -288,11 +407,115 @@
             var nodesToAdd = [];
             var edgesToAdd = [];
 
-            // We need to track what we've added in this batch to avoid dupes within the batch
-            var addedNodeKeys = new Set(); // Key: GroupNodeID-NodeValueID
+            var uniqueTargetsMap = new Map();
 
-            // Optimization: Wrap updates in batch
+            results.forEach(function (item) {
+                if (!item.TargetNodeDataID && !item.TargetNodeID) return;
+
+                var groupIdInt = Interner.get(item.TargetGroupNodeID);
+                var valueIdInt = Interner.get(item.TargetNodeValueID);
+
+                if (!uniqueTargetsMap.has(groupIdInt)) {
+                    uniqueTargetsMap.set(groupIdInt, new Map());
+                }
+                var groupMap = uniqueTargetsMap.get(groupIdInt);
+                if (!groupMap.has(valueIdInt)) {
+                    groupMap.set(valueIdInt, item);
+                }
+            });
+
             cy.batch(function () {
+                // --- Pass 2: Process Unique Nodes ---
+                uniqueTargetsMap.forEach(function (groupMap, groupIdInt) {
+                    groupMap.forEach(function (item, valueIdInt) {
+                        var targetNodeID = item.TargetNodeDataID || item.TargetNodeID;
+                        var targetIdInt = Interner.get(targetNodeID);
+
+                        var lookupGroupMap = Graph.nodeLookup.get(groupIdInt);
+                        var existingNodeIdInt = lookupGroupMap ? lookupGroupMap.get(valueIdInt) : undefined;
+
+                        if (existingNodeIdInt) {
+                            // Merge
+                            var existingNodeIdStr = Interner.resolve(existingNodeIdInt);
+                            var existingNode = cy.getElementById(existingNodeIdStr);
+
+                            if (existingNode.length > 0) {
+                                var data = existingNode.data();
+                                var idSet = Graph.idSets.get(existingNodeIdInt);
+
+                                if (!idSet.has(targetIdInt)) {
+                                    data.allIds.push(targetIdInt);
+                                    idSet.add(targetIdInt);
+
+                                    data.colors.push(item.TargetNodeColor || '#666');
+                                    Graph.updatePieData(data);
+                                    existingNode.data(data);
+
+                                    if (data.flags & FLAGS.HAS_PIE) existingNode.addClass('has-pie');
+                                    else existingNode.removeClass('has-pie');
+
+                                    Graph.expandableNodeIds.add(existingNodeIdInt);
+                                    Graph.internalIdLookup.set(targetIdInt, existingNodeIdInt);
+                                }
+                            }
+                        } else {
+                            // Create
+                            var targetIdStr = Interner.resolve(targetIdInt);
+
+                            // Optimization: Use Factory
+                            var newNodeData = createNodeData(
+                                targetIdStr,
+                                item.TargetNodeValue,
+                                item.TargetNodeColor || '#666',
+                                groupIdInt,
+                                valueIdInt,
+                                item.TargetNodeValueDate,
+                                [targetIdInt],
+                                [item.TargetNodeColor || '#666'],
+                                []
+                            );
+
+                            Graph.updatePieData(newNodeData);
+
+                            // Initial Position Logic: Place near source if possible
+                            var sourceNodeID = item.SourceNodeDataID || item.SourceNodeID;
+                            var initialPos = { x: 0, y: 0 };
+                            if (sourceNodeID) {
+                                var sourceIdInt = Interner.get(sourceNodeID);
+                                var finalSourceIdInt = Graph.internalIdLookup.get(sourceIdInt);
+                                if (finalSourceIdInt) {
+                                    var sourceNode = cy.getElementById(Interner.resolve(finalSourceIdInt));
+                                    if (sourceNode.length > 0) {
+                                        var pos = sourceNode.position();
+                                        // Randomize slightly to avoid stacking
+                                        initialPos = {
+                                            x: pos.x + (Math.random() * 100 - 50),
+                                            y: pos.y + (Math.random() * 100 - 50)
+                                        };
+                                    }
+                                }
+                            }
+
+                            nodesToAdd.push({
+                                group: 'nodes',
+                                data: newNodeData,
+                                position: initialPos,
+                                classes: (newNodeData.flags & FLAGS.HAS_PIE) ? 'has-pie' : ''
+                            });
+
+                            if (!Graph.nodeLookup.has(groupIdInt)) {
+                                Graph.nodeLookup.set(groupIdInt, new Map());
+                            }
+                            Graph.nodeLookup.get(groupIdInt).set(valueIdInt, targetIdInt);
+
+                            Graph.internalIdLookup.set(targetIdInt, targetIdInt);
+                            Graph.idSets.set(targetIdInt, new Set([targetIdInt]));
+                            Graph.expandableNodeIds.add(targetIdInt);
+                        }
+                    });
+                });
+
+                // --- Pass 3: Process Edges ---
                 results.forEach(function (item) {
                     var sourceNodeID = item.SourceNodeDataID || item.SourceNodeID;
                     var targetNodeID = item.TargetNodeDataID || item.TargetNodeID;
@@ -301,191 +524,115 @@
 
                     if (!sourceNodeID || !targetNodeID || !edgeID) return;
 
-                    var targetId = Graph.normalizeId(targetNodeID);
-                    var sourceId = Graph.normalizeId(sourceNodeID); // This is the specific ID that was expanded
-                    var edgeId = Graph.normalizeId(edgeID);
+                    var sourceIdInt = Interner.get(sourceNodeID);
+                    var targetIdInt = Interner.get(targetNodeID);
+                    var edgeIdStr = String(edgeID).trim();
 
-                    // --- 1. Handle Target Node Merging ---
-                    var lookupKey = item.TargetGroupNodeID + '-' + item.TargetNodeValueID;
-                    var existingNodeId = Graph.nodeLookup[lookupKey];
+                    var finalSourceIdInt = Graph.internalIdLookup.get(sourceIdInt);
+                    var finalTargetIdInt = Graph.internalIdLookup.get(targetIdInt);
 
-                    var finalTargetId = targetId; // Default to the new ID
-
-                    if (existingNodeId) {
-                        // Merge into existing
-                        var existingNode = cy.getElementById(existingNodeId);
-                        if (existingNode.length > 0) {
-                            finalTargetId = existingNodeId; // Use the existing node's ID as target
-
-                            var data = existingNode.data();
-                            if (!data.allIds.includes(targetId)) {
-                                data.allIds.push(targetId);
-                                data.colors.push(item.TargetNodeColor || '#666');
-                                Graph.updatePieData(data);
-                                existingNode.data(data);
-
-                                // Update Class
-                                if (data.pieImage) existingNode.addClass('has-pie');
-                                else existingNode.removeClass('has-pie');
-
-                                // Mark as expandable
-                                Graph.expandableNodeIds.add(existingNodeId);
-
-                                // Update Internal ID Lookup
-                                Graph.internalIdLookup[targetId] = existingNodeId;
-                            }
-                        }
-                    } else {
-                        // Check if we already queued it in this batch
-                        if (!addedNodeKeys.has(lookupKey)) {
-                            var newNodeData = {
-                                id: targetId,
-                                label: item.TargetNodeValue,
-                                color: item.TargetNodeColor || '#666',
-                                groupNodeId: item.TargetGroupNodeID,
-                                nodeValueId: item.TargetNodeValueID,
-                                nodeValueDate: item.TargetNodeValueDate,
-                                isExpanded: false,
-                                allIds: [targetId],
-                                colors: [item.TargetNodeColor || '#666'],
-                                expandedIds: []
-                            };
-                            Graph.updatePieData(newNodeData);
-
-                            nodesToAdd.push({
-                                group: 'nodes',
-                                data: newNodeData,
-                                classes: newNodeData.pieImage ? 'has-pie' : ''
-                            });
-                            addedNodeKeys.add(lookupKey);
-
-                            // Optimistically update lookup for this batch
-                            Graph.nodeLookup[lookupKey] = targetId;
-
-                            // Optimistically update internal lookup
-                            Graph.internalIdLookup[targetId] = targetId;
-
-                            Graph.expandableNodeIds.add(targetId);
-                        } else {
-                            // It is in the batch
-                            var queuedNode = nodesToAdd.find(function (n) {
-                                return n.data.groupNodeId == item.TargetGroupNodeID &&
-                                    n.data.nodeValueId == item.TargetNodeValueID;
-                            });
-                            if (queuedNode) {
-                                finalTargetId = queuedNode.data.id;
-                                if (!queuedNode.data.allIds.includes(targetId)) {
-                                    queuedNode.data.allIds.push(targetId);
-                                    queuedNode.data.colors.push(item.TargetNodeColor || '#666');
-                                    Graph.updatePieData(queuedNode.data);
-                                    if (queuedNode.data.pieImage) queuedNode.classes = 'has-pie';
-
-                                    // Update Internal ID Lookup for this new ID mapping to queued node
-                                    Graph.internalIdLookup[targetId] = finalTargetId;
-                                }
-                            }
-                        }
-                    }
-
-                    // --- 2. Handle Source Node Mapping ---
-                    // Optimized: Use Internal ID Lookup (O(1))
-                    var finalSourceId = Graph.internalIdLookup[sourceId];
-
-                    // Fallback (should rarely happen if logic is correct)
-                    if (!finalSourceId) {
-                        // Try finding it manually if lookup failed (safety net)
+                    // Safety Check: Ensure Source Node exists (Old or New)
+                    if (!finalSourceIdInt) {
+                        // Fallback: Scan existing nodes (expensive, but rare)
                         var sourceNode = cy.nodes().filter(function (ele) {
-                            return ele.data('allIds') && ele.data('allIds').includes(sourceId);
+                            var allIds = ele.data('allIds');
+                            return allIds && allIds.includes(sourceIdInt);
                         });
                         if (sourceNode.length > 0) {
-                            finalSourceId = sourceNode[0].id();
-                            Graph.internalIdLookup[sourceId] = finalSourceId; // Repair lookup
+                            finalSourceIdInt = Interner.get(sourceNode[0].id());
+                            Graph.internalIdLookup.set(sourceIdInt, finalSourceIdInt);
                         } else {
-                            finalSourceId = sourceId; // Last resort
+                            // If not found, we can't add the edge
+                            return;
                         }
                     }
 
-                    // --- 3. Edge Merging ---
-                    // Check if ANY edge exists between finalSourceId and finalTargetId
-                    // Optimized: Use Set Lookup
-                    var edgeKey1 = finalSourceId + '-' + finalTargetId;
-                    var edgeKey2 = finalTargetId + '-' + finalSourceId; // Assuming undirected visual check
+                    if (!finalTargetIdInt) finalTargetIdInt = targetIdInt;
 
-                    if (!Graph.edgeLookup.has(edgeKey1) && !Graph.edgeLookup.has(edgeKey2)) {
-                        // No visual edge exists, so add one
+                    var hasEdge = false;
+                    if (Graph.adjacencyList.has(finalSourceIdInt)) {
+                        if (Graph.adjacencyList.get(finalSourceIdInt).has(finalTargetIdInt)) hasEdge = true;
+                    }
+                    if (!hasEdge && Graph.adjacencyList.has(finalTargetIdInt)) {
+                        if (Graph.adjacencyList.get(finalTargetIdInt).has(finalSourceIdInt)) hasEdge = true;
+                    }
+
+                    if (!hasEdge) {
+                        var finalSourceIdStr = Interner.resolve(finalSourceIdInt);
+                        var finalTargetIdStr = Interner.resolve(finalTargetIdInt);
+
                         edgesToAdd.push({
                             group: 'edges',
                             data: {
-                                id: edgeId,
-                                source: finalSourceId,
-                                target: finalTargetId,
+                                id: edgeIdStr,
+                                source: finalSourceIdStr,
+                                target: finalTargetIdStr,
                                 label: edgeLabel
                             }
                         });
-                        Graph.edgeLookup.add(edgeKey1);
-                        Graph.edgeLookup.add(edgeKey2);
+
+                        if (!Graph.adjacencyList.has(finalSourceIdInt)) {
+                            Graph.adjacencyList.set(finalSourceIdInt, new Set());
+                        }
+                        Graph.adjacencyList.get(finalSourceIdInt).add(finalTargetIdInt);
+
+                        if (!Graph.adjacencyList.has(finalTargetIdInt)) {
+                            Graph.adjacencyList.set(finalTargetIdInt, new Set());
+                        }
+                        Graph.adjacencyList.get(finalTargetIdInt).add(finalSourceIdInt);
                     }
                 });
             });
 
-            var newEles = cy.collection();
+            var allEles = [];
+            if (nodesToAdd.length > 0) allEles = allEles.concat(nodesToAdd);
+            if (edgesToAdd.length > 0) allEles = allEles.concat(edgesToAdd);
 
-            if (nodesToAdd.length > 0) {
-                newEles = newEles.union(cy.add(nodesToAdd));
-            }
-
-            if (edgesToAdd.length > 0) {
+            if (allEles.length > 0) {
                 try {
-                    newEles = newEles.union(cy.add(edgesToAdd));
+                    var addedEles = cy.add(allEles);
+                    Graph.runLayout(addedEles);
                 } catch (e) {
-                    console.error("Error adding edges:", e);
+                    console.error("Error adding elements or running layout:", e);
                 }
-            }
-
-            if (newEles.length > 0) {
-                Graph.runLayout(newEles);
             }
         },
 
         expandNextBatch: function () {
             if (!cy) return;
+            if (Graph.isExpanding) return;
+            Graph.isExpanding = true;
 
             var batchSize = parseInt($('#setting-batch-size').val()) || 50;
             var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
 
-            // Find nodes that are NOT fully expanded
-            // Optimized: Use Graph.expandableNodeIds Set
             var expandableNodes = [];
-            var idsToRemove = []; // IDs that are actually fully expanded and should be removed from Set
+            var idsToRemove = [];
 
-            // Iterate the Set
-            // Note: Sets are iterable in insertion order
-            for (var id of Graph.expandableNodeIds) {
+            for (var idInt of Graph.expandableNodeIds) {
                 if (expandableNodes.length >= batchSize) break;
 
-                var node = cy.getElementById(id);
+                var idStr = Interner.resolve(idInt);
+                var node = cy.getElementById(idStr);
                 if (node.length === 0) {
-                    idsToRemove.push(id); // Node removed from graph?
+                    idsToRemove.push(idInt);
                     continue;
                 }
 
                 var allIds = node.data('allIds') || [];
                 var expandedIds = node.data('expandedIds') || [];
 
-                // Check if truly expandable
-                var hasNewIds = allIds.some(function (x) { return !expandedIds.includes(x); });
-
-                if (hasNewIds) {
+                if (allIds.length > expandedIds.length) {
                     expandableNodes.push(node);
                 } else {
-                    idsToRemove.push(id); // Fully expanded
+                    idsToRemove.push(idInt);
                 }
             }
 
-            // Cleanup Set
             idsToRemove.forEach(function (id) { Graph.expandableNodeIds.delete(id); });
 
             if (expandableNodes.length === 0) {
+                Graph.isExpanding = false;
                 if (Graph.expandableNodeIds.size === 0) {
                     alert("No unexpanded nodes found.");
                 } else {
@@ -494,23 +641,24 @@
                 return;
             }
 
-            // Collect IDs to expand (Granular Tracking)
             var idsToExpand = [];
-            var nodeMap = new Map(); // Map SourceID -> Visual Node (to update state later)
+            var nodeMap = new Map();
 
             expandableNodes.forEach(function (ele) {
                 var allIds = ele.data('allIds') || [];
                 var expandedIds = ele.data('expandedIds') || [];
+                var expandedSet = new Set(expandedIds);
 
-                var newIds = allIds.filter(function (id) { return !expandedIds.includes(id); });
+                var newIds = allIds.filter(function (id) { return !expandedSet.has(id); });
 
-                newIds.forEach(function (id) {
-                    idsToExpand.push(id);
-                    nodeMap.set(id, ele);
+                newIds.forEach(function (idInt) {
+                    idsToExpand.push(Interner.resolve(idInt));
+                    nodeMap.set(idInt, ele);
                 });
             });
 
             if (idsToExpand.length === 0) {
+                Graph.isExpanding = false;
                 alert("No new data to expand.");
                 return;
             }
@@ -542,11 +690,14 @@
             }
 
             var config = window.parent.APP_CONFIG;
-            if (!config) return;
+            if (!config) {
+                Graph.isExpanding = false;
+                return;
+            }
 
             var payload = {
                 ViewGroupID: 1,
-                SourceNodeDataIDs: idsToExpand, // Send only new IDs
+                SourceNodeDataIDs: idsToExpand,
                 FilterNodes: filters,
                 MaxNeighbors: maxNeighbors,
                 Lang: config.Lang
@@ -563,39 +714,47 @@
                 success: function (data) {
                     Graph.addExpansionResults(data);
 
-                    // Update State: Mark sent IDs as expanded
-                    idsToExpand.forEach(function (id) {
-                        var node = nodeMap.get(id);
+                    idsToExpand.forEach(function (idStr) {
+                        var idInt = Interner.get(idStr);
+                        var node = nodeMap.get(idInt);
                         if (node) {
                             var expandedIds = node.data('expandedIds') || [];
-                            if (!expandedIds.includes(id)) {
-                                expandedIds.push(id);
+                            if (!expandedIds.includes(idInt)) {
+                                expandedIds.push(idInt);
                                 node.data('expandedIds', expandedIds);
                             }
 
-                            // Check if fully expanded
                             var allIds = node.data('allIds');
                             if (allIds.length === expandedIds.length) {
-                                node.data('isExpanded', true);
-                                // Remove from expandable set
-                                Graph.expandableNodeIds.delete(node.id());
+                                // Optimization: Update Flag
+                                var flags = node.data('flags') | FLAGS.EXPANDED;
+                                node.data('flags', flags);
+
+                                var nodeIdInt = Interner.get(node.id());
+                                Graph.expandableNodeIds.delete(nodeIdInt);
                             }
                         }
                     });
+
+                    Graph.isExpanding = false;
                 },
                 error: function (err) {
                     console.error("Expansion failed", err);
                     alert("Expansion failed.");
+                    Graph.isExpanding = false;
                 }
             });
         },
 
         clear: function () {
-            Graph.nodeLookup = {};
-            Graph.internalIdLookup = {};
+            Interner.clear();
+            Graph.nodeLookup = new Map();
+            Graph.internalIdLookup = new Map();
+            Graph.idSets = new Map();
             Graph.svgCache = {};
-            Graph.edgeLookup = new Set();
+            Graph.adjacencyList = new Map();
             Graph.expandableNodeIds = new Set();
+            Graph.isExpanding = false;
             if (cy) cy.elements().remove();
         }
     };
