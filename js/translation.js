@@ -59,7 +59,10 @@ const translations = {
         "relationsettings.col.relationColumn": "Relation Entity",
         "relationsettings.col.englishName": "English Name",
         "relationsettings.col.arabicName": "Arabic Name",
-        "relationsettings.col.active": "Active"
+        "relationsettings.col.active": "Active",
+        "settings.expansionTitle": "Expansion Settings",
+        "settings.batchSize": "Batch Size",
+        "settings.maxNeighbors": "Max Neighbors"
     },
     "ar-AE": {
         "app.title": "مستكشف بيانات الرسم البياني",
@@ -121,7 +124,10 @@ const translations = {
         "relationsettings.col.relationColumn": "كيان العلاقة",
         "relationsettings.col.englishName": "الاسم الإنجليزي",
         "relationsettings.col.arabicName": "الاسم العربي",
-        "relationsettings.col.active": "نشط"
+        "relationsettings.col.active": "نشط",
+        "settings.expansionTitle": "إعدادات التوسيع",
+        "settings.batchSize": "حجم الدفعة",
+        "settings.maxNeighbors": "الحد الأقصى للجيران"
     }
 };
 

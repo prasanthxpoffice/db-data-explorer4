@@ -16,6 +16,7 @@
             var $grid = $("#legends-grid");
 
             var colModel = [
+                { name: 'NodeID', hidden: true, key: true },
                 { label: window.i18n.get('legends.nodeName'), name: 'NodeName', width: 120 },
                 {
                     label: window.i18n.get('legends.color'),
@@ -60,7 +61,7 @@
             ];
 
             // Calculate total width
-            var totalWidth = colModel.reduce(function (sum, col) { return sum + col.width; }, 0);
+            var totalWidth = colModel.reduce(function (sum, col) { return sum + (col.hidden ? 0 : col.width); }, 0);
             totalWidth += 30; // Add width for multiselect column (approx)
 
             // Initialize jqGrid with defaults from AppUtils

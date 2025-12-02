@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace IAS.Areas.DbGraph.Models
@@ -84,5 +85,21 @@ namespace IAS.Areas.DbGraph.Models
     public class DeleteRelationRequest
     {
         public int RelationID { get; set; }
+    }
+
+    public class NodeFilterModel
+    {
+        public int NodeID { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+    }
+
+    public class NodesExpandRequest
+    {
+        public int ViewGroupID { get; set; }
+        public List<int> SourceNodeDataIDs { get; set; }
+        public List<NodeFilterModel> FilterNodes { get; set; }
+        public int MaxNeighbors { get; set; } = 5;
+        public string Lang { get; set; } = "en";
     }
 }

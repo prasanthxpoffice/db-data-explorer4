@@ -5,6 +5,37 @@
     <div style="margin-top: 10px;">
         <button id="btn-open-relations-settings" data-i18n="settings.relationsBtn">Relations</button>
     </div>
+
+    <!-- Expansion Settings -->
+    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
+        <h4 data-i18n="settings.expansionTitle" style="margin: 0 0 10px 0; color: #555;">Expansion Settings</h4>
+        <div class="form-group" style="margin-bottom: 10px;">
+            <label for="setting-batch-size" data-i18n="settings.batchSize"
+                style="display: block; margin-bottom: 5px;">Batch Size</label>
+            <select id="setting-batch-size" style="width: 100%; padding: 5px;">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="setting-max-neighbors" data-i18n="settings.maxNeighbors"
+                style="display: block; margin-bottom: 5px;">Max Neighbors</label>
+            <select id="setting-max-neighbors" style="width: 100%; padding: 5px;">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div style="margin-top: 15px;">
+            <button id="btn-expand-next"
+                style="width: 100%; padding: 8px; background-color: #28a745; color: white; border: none; cursor: pointer;">Expand
+                Next Batch</button>
+        </div>
+    </div>
 </div>
 
 <!-- Modal Containers -->
@@ -58,6 +89,14 @@
 
         $('#btn-open-relations-settings').on('click', function () {
             openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
+        });
+
+        $('#btn-expand-next').on('click', function () {
+            if (window.Graph && window.Graph.expandNextBatch) {
+                window.Graph.expandNextBatch();
+            } else {
+                console.error("Graph.expandNextBatch not found");
+            }
         });
     })();
 </script>

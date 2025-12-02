@@ -321,5 +321,68 @@ namespace IAS.Areas.DbGraph.Controllers
             return Json(results);
         }
 
-    }
+        [HttpPost]
+        [Route("nodesexpand")]
+        public ActionResult NodesExpand(NodesExpandRequest request)
+        {
+            string sqlLang = (request.Lang == "ar") ? "ar-AE" : "en-US";
+            var dt = new DataTable();
+
+            // Create DataTable for Source Nodes TVP
+            var sourceTvp = new DataTable();
+            sourceTvp.Columns.Add("NodeDataID", typeof(int));
+            if (request.SourceNodeDataIDs != null)
+            {
+                foreach (var id in request.SourceNodeDataIDs)
+                {
+                    sourceTvp.Rows.Add(id);
+                }
+            }
+
+            // Create DataTable for Filter Nodes TVP
+            var filterTvp = new DataTable();
+            filterTvp.Columns.Add("NodeID", typeof(int));
+            filterTvp.Columns.Add("FromDate", typeof(DateTime));
+            filterTvp.Columns.Add("ToDate", typeof(DateTime));
+            
+            if (request.FilterNodes != null)
+            {
+                foreach (var filter in request.FilterNodes)
+                {
+                    filterTvp.Rows.Add(filter.NodeID, filter.FromDate ?? (object)DBNull.Value, filter.ToDate ?? (object)DBNull.Value);
+                }
+            }
+
+            using (var conn = new SqlConnection(_connectionString))
+            {
+                using (var cmd = new SqlCommand("[graphdb].[sp_NodesExpand]", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@ViewGroupID", request.ViewGroupID);
+                    cmd.Parameters.AddWithValue("@MaxNeighbors", request.MaxNeighbors);
+                    cmd.Parameters.AddWithValue("@Lang", sqlLang);
+                    
+                    var pSource = cmd.Parameters.AddWithValue("@SourceNodeDataIDs", sourceTvp);
+                    pSource.SqlDbType = SqlDbType.Structured;
+                    pSource.TypeName = "[graphdb].[NodeDataIDTable]";
+
+                    var pFilter = cmd.Parameters.AddWithValue("@FilterNodes", filterTvp);
+                    pFilter.SqlDbType = SqlDbType.Structured;
+                    pFilter.TypeName = "[graphdb].[NodeFilterTable]";
+
+                    conn.Open();
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        dt.Load(reader);
+                    }
+                }
+            }
+
+            var results = dt.AsEnumerable().Select(row =>
+                dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
+            ).ToList();
+
+            return Json(results);
+        }
+}
 }
