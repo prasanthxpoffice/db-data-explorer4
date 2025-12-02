@@ -92,7 +92,14 @@ const translations = {
         "layout.grid": "Grid",
         "layout.circle": "Circle",
         "layout.concentric": "Concentric",
-        "layout.breadthfirst": "Breadthfirst (Tree)"
+        "layout.breadthfirst": "Breadthfirst (Tree)",
+        "entityinfo.title": "Entity Info",
+        "entityinfo.selectedNode": "Selected Node",
+        "entityinfo.connectedNodes": "Connected Nodes",
+        "entityinfo.noSelection": "Click a node to view details",
+        "entityinfo.nodeId": "Node ID",
+        "entityinfo.nodeType": "Type",
+        "entityinfo.relationship": "Relationship"
     },
     "ar-AE": {
         "app.title": "مستكشف بيانات الرسم البياني",
@@ -186,7 +193,14 @@ const translations = {
         "layout.grid": "شبكة",
         "layout.circle": "دائرة",
         "layout.concentric": "متحد المركز",
-        "layout.breadthfirst": "الاتساع أولاً (شجرة)"
+        "layout.breadthfirst": "الاتساع أولاً (شجرة)",
+        "entityinfo.title": "معلومات الكيان",
+        "entityinfo.selectedNode": "العقدة المحددة",
+        "entityinfo.connectedNodes": "العقد المتصلة",
+        "entityinfo.noSelection": "انقر على عقدة لعرض التفاصيل",
+        "entityinfo.nodeId": "معرف العقدة",
+        "entityinfo.nodeType": "النوع",
+        "entityinfo.relationship": "العلاقة"
     }
 };
 

@@ -196,6 +196,31 @@
                 Graph.expandNodes([node]);
             });
 
+            // Single-click handler for Entity Info
+            cy.on('tap', 'node', function (evt) {
+                var node = evt.target;
+                var nodeData = {
+                    id: node.id(),
+                    label: node.data('label'),
+                    type: node.data('groupName') || node.data('type') || 'Unknown',
+                    connectedNodes: []
+                };
+
+                // Get connected edges and nodes
+                var connectedEdges = node.connectedEdges();
+                connectedEdges.forEach(function (edge) {
+                    var targetNode = edge.target().id() === node.id() ? edge.source() : edge.target();
+                    nodeData.connectedNodes.push({
+                        nodeId: targetNode.id(),
+                        nodeLabel: targetNode.data('label'),
+                        relationship: edge.data('label') || 'Connected'
+                    });
+                });
+
+                // Trigger custom event for Entity Info panel
+                $(document).trigger('nodeSelected', [nodeData]);
+            });
+
             // Layout Switcher
             // Layout Switcher - Use event delegation for dynamically loaded content
             $(document).on('change', '#setting-layout', function () {

@@ -18,6 +18,10 @@
             <h3 data-i18n="path.title">Path</h3>
             <div id="path-container"></div>
 
+            <!-- Entity Info Section -->
+            <h3 data-i18n="entityinfo.title">Entity Info</h3>
+            <div id="entityinfo-container"></div>
+
             <!-- Settings Section -->
             <h3 data-i18n="settings.title">Settings</h3>
             <div id="settings-container"></div>
@@ -51,6 +55,7 @@
             window.loadComponent('partials/legends.html', '#legends-container');
             window.loadComponent('partials/search.html', '#search-container');
             window.loadComponent('partials/path.html', '#path-container');
+            window.loadComponent('partials/entityinfo.html', '#entityinfo-container');
             window.loadComponent('partials/settings.html', '#settings-container');
         } else {
             console.error("loadComponent function not found!");
