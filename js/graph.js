@@ -212,8 +212,8 @@
             if (!cy) return;
 
             // 1. Get Settings
-            var batchSize = parseInt($('#setting-batch-size').val()) || 10;
-            var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 5;
+            var batchSize = parseInt($('#setting-batch-size').val()) || 50;
+            var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
 
             // 2. Get Unexpanded Nodes
             var unexpanded = cy.nodes().filter(function (ele) {

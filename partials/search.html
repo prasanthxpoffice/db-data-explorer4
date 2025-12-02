@@ -131,6 +131,11 @@
 
             if (nodeDataIds.length === 0) return;
 
+            // Clear existing graph before showing new results
+            if (window.Graph && window.Graph.clear) {
+                window.Graph.clear();
+            }
+
             $.ajax({
                 url: nodesSearchUrl,
                 method: config.api.nodesSearch.method,
