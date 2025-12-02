@@ -690,9 +690,9 @@
             if (expandableNodes.length === 0) {
                 Graph.isExpanding = false;
                 if (Graph.expandableNodeIds.size === 0) {
-                    alert("No unexpanded nodes found.");
+                    alert(window.i18n.get('graph.noUnexpanded'));
                 } else {
-                    alert("No unexpanded nodes found in this pass.");
+                    alert(window.i18n.get('graph.noUnexpandedPass'));
                 }
                 return;
             }
@@ -715,7 +715,7 @@
 
             if (idsToExpand.length === 0) {
                 Graph.isExpanding = false;
-                alert("No new data to expand.");
+                alert(window.i18n.get('graph.noNewData'));
                 return;
             }
 
@@ -797,7 +797,7 @@
                 },
                 error: function (err) {
                     console.error("Expansion failed", err);
-                    alert("Expansion failed.");
+                    alert(window.i18n.get('graph.expansionFailed'));
                     Graph.isExpanding = false;
                 }
             });

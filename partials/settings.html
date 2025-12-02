@@ -40,7 +40,7 @@
             </select>
         </div>
         <div style="margin-top: 15px;">
-            <button id="btn-expand-next"
+            <button id="btn-expand-next" data-i18n="settings.expandNext"
                 style="width: 100%; padding: 8px; background-color: #28a745; color: white; border: none; cursor: pointer;">Expand
                 Next Batch</button>
         </div>
@@ -88,7 +88,7 @@
                 }
             }).fail(function () {
                 console.error("Failed to load " + url);
-                alert("Error loading settings.");
+                alert(window.i18n.get('settings.errorLoading'));
             });
         }
 

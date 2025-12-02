@@ -62,24 +62,24 @@
                     lang: lang
                 },
                 colModel: [
-                    { label: 'Relation ID', name: 'RelationID', key: true, hidden: true },
-                    { label: 'View Group ID', name: 'ViewGroupID', hidden: true },
+                    { label: window.i18n.get('relationsettings.col.relationId'), name: 'RelationID', key: true, hidden: true },
+                    { label: window.i18n.get('relationsettings.col.viewGroupId'), name: 'ViewGroupID', hidden: true },
 
                     // Source
                     { label: window.i18n.get('relationsettings.col.sourceColumn'), name: 'SourceColumnName', width: 120, editable: false },
-                    { label: 'Source Node ID', name: 'SourceNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+                    { label: window.i18n.get('relationsettings.col.sourceNodeId'), name: 'SourceNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
 
                     // Search
                     { label: window.i18n.get('relationsettings.col.searchColumn'), name: 'SearchColumnName', width: 120, editable: false },
-                    { label: 'Search Node ID', name: 'SearchNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+                    { label: window.i18n.get('relationsettings.col.searchNodeId'), name: 'SearchNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
 
                     // Display
                     { label: window.i18n.get('relationsettings.col.displayColumn'), name: 'DisplayColumnName', width: 120, editable: false },
-                    { label: 'Display Node ID', name: 'DisplayNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
+                    { label: window.i18n.get('relationsettings.col.displayNodeId'), name: 'DisplayNodeID', hidden: true, editable: true, editrules: { edithidden: true } },
 
                     // Relation
                     {
-                        label: 'Relation Entity',
+                        label: window.i18n.get('relationsettings.col.relationEntity'),
                         name: 'RelationNodeID',
                         width: 150,
                         hidden: false,
