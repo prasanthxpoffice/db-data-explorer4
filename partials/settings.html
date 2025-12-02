@@ -33,79 +33,70 @@
                 <option value="20">20</option>
                 <option value="50">50</option>
                 <option value="100" selected>100</option>
-                <option value="200">200</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-                <option value="2000">2000</option>
-            </select>
+                <!-- Content loaded dynamically -->
         </div>
-        <div style="margin-top: 15px;">
-            <button id="btn-expand-next" data-i18n="settings.expandNext"
-                style="width: 100%; padding: 8px; background-color: #28a745; color: white; border: none; cursor: pointer;">Expand
-                Next Batch</button>
+        <div id="relation-settings-modal" title="Relation Settings" style="display:none;">
+            <!-- Content loaded dynamically -->
         </div>
-    </div>
-</div>
 
-<!-- Modal Containers -->
-<div id="node-settings-modal" title="Entity Settings" style="display:none;">
-    <!-- Content loaded dynamically -->
-</div>
-<div id="relation-settings-modal" title="Relation Settings" style="display:none;">
-    <!-- Content loaded dynamically -->
-</div>
-
-<script>
-    (function () {
-        // Initialize Dialogs using Utility
-        if (window.AppUtils && window.AppUtils.createModal) {
-            window.AppUtils.createModal("#node-settings-modal", { width: 900, height: 'auto' });
-            window.AppUtils.createModal("#relation-settings-modal", { width: 1150, height: 'auto' });
-        } else {
-            console.error("AppUtils.createModal not found");
-        }
-
-        function openModal(modalId, url, titleKey, defaultTitle) {
-            var $modal = $(modalId);
-            var bust = '?t=' + new Date().getTime();
-
-            $.get(url + bust, function (data) {
-                $modal.html(data);
-
-                if (window.i18n && window.i18n.applyLanguage) {
-                    window.i18n.applyLanguage(window.i18n.currentLang);
+        <script>
+            (function () {
+                // Initialize Dialogs using Utility
+                if (window.AppUtils && window.AppUtils.createModal) {
+                    window.AppUtils.createModal("#node-settings-modal", { width: 900, height: 'auto' });
+                    window.AppUtils.createModal("#relation-settings-modal", { width: 1150, height: 'auto' });
+                } else {
+                    console.error("AppUtils.createModal not found");
                 }
 
-                var title = window.i18n ? window.i18n.get(titleKey) : defaultTitle;
-                if ($modal.hasClass('ui-dialog-content')) {
-                    $modal.dialog('option', 'title', title);
-                    $modal.dialog('open');
+                function openModal(modalId, url, titleKey, defaultTitle) {
+                    var $modal = $(modalId);
+                    var bust = '?t=' + new Date().getTime();
 
-                    // Force center position after a slight delay to allow for rendering
-                    setTimeout(function () {
-                        $modal.dialog('option', 'position', { my: "center", at: "center", of: window });
-                    }, 100);
+                    $.get(url + bust, function (data) {
+                        $modal.html(data);
+
+                        if (window.i18n && window.i18n.applyLanguage) {
+                            window.i18n.applyLanguage(window.i18n.currentLang);
+                        }
+
+                        var title = window.i18n ? window.i18n.get(titleKey) : defaultTitle;
+                        if ($modal.hasClass('ui-dialog-content')) {
+                            $modal.dialog('option', 'title', title);
+                            $modal.dialog('open');
+
+                            // Force center position after a slight delay to allow for rendering
+                            setTimeout(function () {
+                                $modal.dialog('option', 'position', { my: "center", at: "center", of: window });
+                            }, 100);
+                        }
+                    }).fail(function () {
+                        console.error("Failed to load " + url);
+                        alert(window.i18n.get('settings.errorLoading'));
+                    });
                 }
-            }).fail(function () {
-                console.error("Failed to load " + url);
-                alert(window.i18n.get('settings.errorLoading'));
-            });
-        }
 
-        $('#btn-open-nodes-settings').on('click', function () {
-            openModal('#node-settings-modal', 'partials/nodesettings.html', 'nodesettings.title', 'Entity Settings');
-        });
+                $('#btn-open-nodes-settings').on('click', function () {
+                    openModal('#node-settings-modal', 'partials/nodesettings.html', 'nodesettings.title', 'Entity Settings');
+                });
 
-        $('#btn-open-relations-settings').on('click', function () {
-            openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
-        });
+                $('#btn-open-relations-settings').on('click', function () {
+                    openModal('#relation-settings-modal', 'partials/relationsettings.html', 'relationsettings.title', 'Relation Settings');
+                });
 
-        $('#btn-expand-next').on('click', function () {
-            if (window.Graph && window.Graph.expandNextBatch) {
-                window.Graph.expandNextBatch();
-            } else {
-                console.error("Graph.expandNextBatch not found");
-            }
-        });
-    })();
-</script>
+                $('#setting-auto-expand').on('change', function () {
+                    var enabled = $(this).is(':checked');
+                    if (window.Graph && window.Graph.setAutoExpand) {
+                        window.Graph.setAutoExpand(enabled);
+                    }
+                });
+
+                $('#btn-expand-next').on('click', function () {
+                    if (window.Graph && window.Graph.expandNextBatch) {
+                        window.Graph.expandNextBatch();
+                    } else {
+                        console.error("Graph.expandNextBatch not found");
+                    }
+                });
+            })();
+        </script>

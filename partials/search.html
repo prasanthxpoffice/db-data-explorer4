@@ -15,6 +15,27 @@
         <div class="no-items" data-i18n="search.noItems" style="color: #888; font-style: italic; font-size: 0.9em;">No
             items added</div>
     </div>
+    <div id="expansion-controls" style="display:none; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center;">
+                <label class="switch" style="transform: scale(0.8); margin: 0 5px 0 0;">
+                    <input type="checkbox" id="setting-auto-expand">
+                    <span class="slider round"></span>
+                </label>
+                <span data-i18n="settings.autoExpand">Auto-Expand</span>
+            </div>
+            <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                <label for="setting-max-batches" style="font-size: 0.9em; color: #666;"
+                    data-i18n="settings.maxBatches">Max Batches:</label>
+                <input type="number" id="setting-max-batches" value="10" min="1" max="100"
+                    style="width: 50px; padding: 2px;">
+            </div>
+        </div>
+        <button id="btn-expand-next" data-i18n="settings.expandNext"
+            style="width: 100%; padding: 8px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px;">
+            Expand Next Batch
+        </button>
+    </div>
     <button id="show-graph-btn"
         style="display:none; width: 100%; margin-top: 10px; padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
         data-i18n="search.show">Show</button>
@@ -119,8 +140,29 @@
                 $('#show-graph-btn').show();
             } else {
                 $('#show-graph-btn').hide();
+                $('#expansion-controls').hide(); // Hide if no items to search
             }
         }
+
+        // Auto-Expand Logic
+        $('#setting-auto-expand').on('change', function () {
+            var enabled = $(this).is(':checked');
+            if (enabled) {
+                $('#btn-expand-next').hide();
+            } else {
+                $('#btn-expand-next').show();
+            }
+            // Update Graph state if it exists
+            if (window.Graph && window.Graph.setAutoExpand) {
+                window.Graph.setAutoExpand(enabled);
+            }
+        });
+
+        $('#btn-expand-next').on('click', function () {
+            if (window.Graph && window.Graph.expandNextBatch) {
+                window.Graph.expandNextBatch();
+            }
+        });
 
         // Show Button Logic
         $('#show-graph-btn').on('click', function () {
@@ -136,6 +178,16 @@
                 window.Graph.clear();
             }
 
+            // Hide controls initially when starting new search
+            $('#expansion-controls').hide();
+
+            // Check Auto-Expand State
+            var autoExpand = $('#setting-auto-expand').is(':checked');
+            if (window.Graph && window.Graph.setAutoExpand) {
+                window.Graph.autoExpand = autoExpand;
+                window.Graph.autoExpandCount = 0;
+            }
+
             $.ajax({
                 url: nodesSearchUrl,
                 method: config.api.nodesSearch.method,
@@ -147,6 +199,18 @@
                 success: function (response) {
                     if (window.Graph && window.Graph.addNodes) {
                         window.Graph.addNodes(response);
+
+                        // Show expansion controls if we have nodes
+                        if (response && response.length > 0) {
+                            $('#expansion-controls').show();
+                        }
+
+                        // Trigger Auto-Expand if enabled
+                        if (autoExpand && window.Graph.expandNextBatch) {
+                            setTimeout(function () {
+                                window.Graph.expandNextBatch();
+                            }, 1000);
+                        }
                     } else {
                         console.error("Graph module not found in window");
                     }

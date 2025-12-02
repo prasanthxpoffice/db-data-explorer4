@@ -806,7 +806,13 @@
             if (expandableNodes.length === 0) {
                 Graph.isExpanding = false;
                 if (Graph.expandableNodeIds.size === 0) {
-                    alert(window.i18n.get('graph.noUnexpanded'));
+                    if (Graph.autoExpand) {
+                        Graph.setAutoExpand(false);
+                        $('#setting-auto-expand').prop('checked', false);
+                        alert("All nodes expanded");
+                    } else {
+                        alert(window.i18n.get('graph.noUnexpanded'));
+                    }
                 } else {
                     alert(window.i18n.get('graph.noUnexpandedPass'));
                 }
@@ -910,6 +916,18 @@
                     });
 
                     Graph.isExpanding = false;
+
+                    if (Graph.autoExpand) {
+                        Graph.autoExpandCount++;
+                        var maxBatches = parseInt($('#setting-max-batches').val()) || 10;
+                        if (Graph.autoExpandCount < maxBatches) {
+                            setTimeout(Graph.expandNextBatch, 500);
+                        } else {
+                            Graph.setAutoExpand(false);
+                            $('#setting-auto-expand').prop('checked', false);
+                            alert("Auto-expansion paused after " + maxBatches + " batches.");
+                        }
+                    }
                 },
                 error: function (err) {
                     console.error("Expansion failed", err);
@@ -928,7 +946,17 @@
             Graph.adjacencyList = new Map();
             Graph.expandableNodeIds = new Set();
             Graph.isExpanding = false;
+            Graph.autoExpand = false;
+            Graph.autoExpandCount = 0;
             if (cy) cy.elements().remove();
+        },
+
+        setAutoExpand: function (enabled) {
+            Graph.autoExpand = enabled;
+            if (enabled) {
+                Graph.autoExpandCount = 0;
+                Graph.expandNextBatch();
+            }
         },
 
         setVisibleLegendIds: function (visibleIds) {
