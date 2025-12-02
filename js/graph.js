@@ -119,11 +119,11 @@
                         }
                     },
                     {
-                        selector: 'edge.hidden',
                         style: {
                             'display': 'none'
                         }
                     },
+
                     {
                         selector: 'edge',
                         style: {
@@ -139,6 +139,24 @@
                             'text-background-color': '#fff',
                             'text-background-shape': 'round-rectangle',
                             'min-zoomed-font-size': 8
+                        }
+                    },
+                    {
+                        selector: 'node.path-highlight',
+                        style: {
+                            'border-color': 'data(pathColor)',
+                            'border-width': 4,
+                            'z-index': 9999
+                        }
+                    },
+                    {
+                        selector: 'edge.path-highlight',
+                        style: {
+                            'width': 4,
+                            'line-color': 'data(pathColor)',
+                            'target-arrow-color': 'data(pathColor)',
+                            'source-arrow-color': 'data(pathColor)',
+                            'z-index': 9999
                         }
                     }
                 ],
@@ -824,6 +842,108 @@
                     }
                 });
             });
+        },
+
+        getSelectedNodes: function () {
+            if (!cy) return [];
+            return cy.nodes(':selected');
+        },
+
+        findShortestPath: function (sourceId, targetId) {
+            if (!cy) return { found: false };
+
+            var source = cy.getElementById(sourceId);
+            var target = cy.getElementById(targetId);
+
+            if (source.length === 0 || target.length === 0) return { found: false };
+
+            var aStar = cy.elements().aStar({
+                root: source,
+                goal: target,
+                directed: false // Allow undirected paths for better usability
+            });
+
+            if (aStar.found) {
+                // Check for duplicates
+                if (!Graph.paths) Graph.paths = new Map();
+
+                var isDuplicate = false;
+                var existingPathId = null;
+                var existingColor = null;
+
+                Graph.paths.forEach(function (path, id) {
+                    var start = path[0];
+                    var end = path[path.length - 1];
+                    // Check if endpoints match (undirected)
+                    if ((start.id() === sourceId && end.id() === targetId) ||
+                        (start.id() === targetId && end.id() === sourceId)) {
+                        isDuplicate = true;
+                        existingPathId = id;
+                        existingColor = path.data('pathColor');
+                    }
+                });
+
+                if (isDuplicate) {
+                    // Just ensure it's highlighted
+                    var existingPath = Graph.paths.get(existingPathId);
+                    existingPath.addClass('path-highlight');
+                    return {
+                        found: true,
+                        id: existingPathId,
+                        length: existingPath.length, // Note: this is element count, distance is better but not stored
+                        color: existingColor,
+                        isDuplicate: true
+                    };
+                }
+                var pathId = Date.now(); // Simple ID
+                // Store path in a map if needed for toggling, or just use class
+                if (!Graph.paths) Graph.paths = new Map();
+                Graph.paths.set(pathId, aStar.path);
+
+                // Generate Distinct Color
+                if (!Graph.pathColorIndex) Graph.pathColorIndex = 0;
+                var colors = [
+                    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+                    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
+                    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
+                    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080',
+                    '#ffffff', '#000000'
+                ];
+                var color = colors[Graph.pathColorIndex % colors.length];
+                Graph.pathColorIndex++;
+
+                // Assign color to path elements
+                aStar.path.data('pathColor', color);
+
+                // Highlight immediately
+                aStar.path.addClass('path-highlight');
+
+                return {
+                    found: true,
+                    id: pathId,
+                    length: aStar.distance,
+                    color: color
+                };
+            }
+
+            return { found: false };
+        },
+
+        togglePath: function (pathId, visible) {
+            if (!Graph.paths || !Graph.paths.has(pathId)) return;
+            var path = Graph.paths.get(pathId);
+            if (visible) {
+                path.addClass('path-highlight');
+            } else {
+                path.removeClass('path-highlight');
+            }
+        },
+
+        removePath: function (pathId) {
+            if (!Graph.paths || !Graph.paths.has(pathId)) return;
+            var path = Graph.paths.get(pathId);
+            path.removeClass('path-highlight');
+            Graph.paths.delete(pathId);
         }
     };
 

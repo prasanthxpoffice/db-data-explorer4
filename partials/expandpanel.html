@@ -14,6 +14,10 @@
             <h3 data-i18n="search.title">Search</h3>
             <div id="search-container"></div>
 
+            <!-- Path Section -->
+            <h3 data-i18n="path.title">Path</h3>
+            <div id="path-container"></div>
+
             <!-- Settings Section -->
             <h3 data-i18n="settings.title">Settings</h3>
             <div id="settings-container"></div>
@@ -46,6 +50,7 @@
             window.loadComponent('partials/datasource.html', '#datasource-container');
             window.loadComponent('partials/legends.html', '#legends-container');
             window.loadComponent('partials/search.html', '#search-container');
+            window.loadComponent('partials/path.html', '#path-container');
             window.loadComponent('partials/settings.html', '#settings-container');
         } else {
             console.error("loadComponent function not found!");

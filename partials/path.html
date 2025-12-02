@@ -1,0 +1,173 @@
+<div class="path-panel-content">
+    <div class="form-group" style="margin-bottom: 10px;">
+        <label style="font-size: 0.9em; font-weight: bold; display: block; margin-bottom: 5px;"
+            data-i18n="path.source">Source Node:</label>
+        <div style="display: flex; gap: 5px;">
+            <input type="text" id="path-source-input" readonly placeholder="Select a node & click Set"
+                style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; background: #f9f9f9;">
+            <button id="set-source-btn" class="btn-sm"
+                style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Set
+            </button>
+        </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom: 15px;">
+        <label style="font-size: 0.9em; font-weight: bold; display: block; margin-bottom: 5px;"
+            data-i18n="path.target">Target Node:</label>
+        <div style="display: flex; gap: 5px;">
+            <input type="text" id="path-target-input" readonly placeholder="Select a node & click Set"
+                style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; background: #f9f9f9;">
+            <button id="set-target-btn" class="btn-sm"
+                style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Set
+            </button>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <button id="add-path-btn"
+            style="width: 100%; padding: 8px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+            disabled>
+            <span data-i18n="path.add">Add Path</span>
+        </button>
+    </div>
+
+    <div id="path-list" class="path-list-container"
+        style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+        <div class="no-paths" data-i18n="path.noPaths"
+            style="color: #888; font-style: italic; font-size: 0.9em; text-align: center;">
+            No paths added
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var sourceNode = null;
+        var targetNode = null;
+        var pathCount = 0;
+
+        function t(key, defaultVal) {
+            if (window.i18n && typeof window.i18n.get === 'function') {
+                return window.i18n.get(key) || defaultVal;
+            }
+            return defaultVal;
+        }
+
+        function getSingleSelectedNode() {
+            if (!window.Graph || !window.Graph.getSelectedNodes) return null;
+            var selected = window.Graph.getSelectedNodes();
+            if (selected.length === 1) {
+                return selected[0];
+            }
+            return null;
+        }
+
+        function updateAddButton() {
+            if (sourceNode && targetNode && sourceNode.id() !== targetNode.id()) {
+                $('#add-path-btn').prop('disabled', false);
+            } else {
+                $('#add-path-btn').prop('disabled', true);
+            }
+        }
+
+        $('#set-source-btn').on('click', function () {
+            var node = getSingleSelectedNode();
+            if (node) {
+                sourceNode = node;
+                $('#path-source-input').val(node.data('label') || node.id());
+                updateAddButton();
+            } else {
+                alert(t('path.selectOne', "Please select exactly one node in the graph first."));
+            }
+        });
+
+        $('#set-target-btn').on('click', function () {
+            var node = getSingleSelectedNode();
+            if (node) {
+                targetNode = node;
+                $('#path-target-input').val(node.data('label') || node.id());
+                updateAddButton();
+            } else {
+                alert(t('path.selectOne', "Please select exactly one node in the graph first."));
+            }
+        });
+
+        $('#add-path-btn').on('click', function () {
+            if (!sourceNode || !targetNode) return;
+
+            var sourceId = sourceNode.id();
+            var targetId = targetNode.id();
+            var sourceLabel = sourceNode.data('label');
+            var targetLabel = targetNode.data('label');
+
+            // Call Graph logic to find path
+            if (window.Graph && window.Graph.findShortestPath) {
+                var pathResult = window.Graph.findShortestPath(sourceId, targetId);
+
+                if (pathResult && pathResult.found) {
+                    if (pathResult.isDuplicate) {
+                        alert(t('path.duplicate', "Path already exists and is highlighted."));
+                    } else {
+                        addPathItem(pathResult.id, sourceLabel, targetLabel, pathResult.length, pathResult.color);
+                    }
+                } else {
+                    alert(t('path.notFound', "No path found between these nodes."));
+                }
+            } else {
+                console.error("Graph.findShortestPath not implemented");
+            }
+        });
+
+        function addPathItem(pathId, sourceLabel, targetLabel, length, color) {
+            $('#path-list .no-paths').hide();
+            pathCount++;
+
+            var itemHtml = `
+                <div class="path-item" id="path-item-${pathId}" style="background: #f9f9f9; border: 1px solid #ddd; padding: 10px; margin-bottom: 5px; border-radius: 4px; border-left: 5px solid ${color || '#666'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <span style="font-weight: bold; font-size: 0.9em;">${sourceLabel} ↔ ${targetLabel}</span>
+                        <span class="remove-path-btn" data-id="${pathId}" style="cursor: pointer; color: #dc3545; font-weight: bold;">×</span>
+                    </div>
+                    
+                    <!-- Color Line Indicator -->
+                    <div style="height: 4px; background-color: ${color || '#666'}; margin: 5px 0; border-radius: 2px;" title="Path Color"></div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.8em; color: #666;">Length: ${length}</span>
+                        <label class="switch" style="transform: scale(0.8);">
+                            <input type="checkbox" class="path-toggle" data-id="${pathId}" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+            `;
+
+            $('#path-list').append(itemHtml);
+        }
+
+        // Handle Toggle
+        $('#path-list').on('change', '.path-toggle', function () {
+            var pathId = $(this).data('id');
+            var isVisible = $(this).is(':checked');
+            if (window.Graph && window.Graph.togglePath) {
+                window.Graph.togglePath(pathId, isVisible);
+            }
+        });
+
+        // Handle Remove
+        $('#path-list').on('click', '.remove-path-btn', function () {
+            var pathId = $(this).data('id');
+            if (window.Graph && window.Graph.removePath) {
+                window.Graph.removePath(pathId);
+            }
+            $(this).closest('.path-item').remove();
+
+            if ($('#path-list .path-item').length === 0) {
+                $('#path-list .no-paths').show();
+            }
+        });
+
+    })();
+</script>
