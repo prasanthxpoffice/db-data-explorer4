@@ -2,7 +2,17 @@
     var cy = null;
 
     var Graph = {
+        nodeLookup: {}, // Map: GroupNodeID-NodeValueID -> Cytoscape Node ID
+        svgCache: {},   // Map: ColorKey -> SVG Data URI
+        edgeLookup: new Set(), // Set: SourceID-TargetID (Visual IDs)
+        expandableNodeIds: new Set(), // Set: Visual Node IDs that have unexpanded data
+
         init: function (containerId) {
+            Graph.nodeLookup = {};
+            Graph.svgCache = {};
+            Graph.edgeLookup = new Set();
+            Graph.expandableNodeIds = new Set();
+
             cy = cytoscape({
                 container: $(containerId),
                 style: [
@@ -66,6 +76,12 @@
             if (!colors || colors.length === 0) return null;
             if (colors.length === 1) return null; // Single color, use default background
 
+            // Cache Key: Sorted colors joined by comma
+            var cacheKey = colors.slice().sort().join(',');
+            if (Graph.svgCache[cacheKey]) {
+                return Graph.svgCache[cacheKey];
+            }
+
             var size = 100;
             var center = size / 2;
             var radius = size / 2;
@@ -100,7 +116,9 @@
                 paths.join('') +
                 '</svg>';
 
-            return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+            var dataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+            Graph.svgCache[cacheKey] = dataUri;
+            return dataUri;
         },
 
         // Helper to update pie chart data based on colors array
@@ -118,6 +136,50 @@
             }
         },
 
+        // Centralized Layout Helper
+        runLayout: function (newElements) {
+            if (!cy) return;
+
+            // If it's the very first load (total nodes == new nodes), run global layout
+            var isFirstLoad = (cy.nodes().length === newElements.length);
+
+            if (isFirstLoad) {
+                var layout = cy.layout({
+                    name: 'cose',
+                    animate: true,
+                    randomize: true,
+                    fit: true,
+                    padding: 50
+                });
+                layout.run();
+            } else {
+                // Incremental Layout
+                // 1. Run layout ONLY on new elements + neighbors
+                var layoutEles = newElements.union(newElements.neighborhood());
+
+                var layout = layoutEles.layout({
+                    name: 'cose',
+                    animate: true,
+                    randomize: false, // Keep existing nodes stable
+                    fit: false // Don't fit the *layout* (we'll fit global later)
+                });
+
+                // 2. After layout finishes, smoothly fit the ENTIRE graph
+                layout.one('layoutstop', function () {
+                    cy.animate({
+                        fit: {
+                            eles: cy.elements(),
+                            padding: 50
+                        },
+                        duration: 500,
+                        easing: 'ease-in-out-cubic'
+                    });
+                });
+
+                layout.run();
+            }
+        },
+
         addNodes: function (nodesData) {
             if (!cy) return;
 
@@ -128,30 +190,32 @@
                 var nodeId = Graph.normalizeId(node.NodeDataID);
                 if (!nodeId) return;
 
-                // Check for EXISTING node with same GroupNodeID and NodeValueID
-                // Reverted to JS filter for robustness (handles type coercion)
-                var existingNodes = cy.nodes().filter(function (ele) {
-                    return ele.data('groupNodeId') == node.GroupNodeID &&
-                        ele.data('nodeValueId') == node.NodeValueID;
-                });
+                // Lookup Key
+                var lookupKey = node.GroupNodeID + '-' + node.NodeValueID;
+                var existingNodeId = Graph.nodeLookup[lookupKey];
 
-                if (existingNodes.length > 0) {
+                if (existingNodeId) {
                     // MERGE into existing node
-                    var existingNode = existingNodes[0];
-                    var data = existingNode.data();
+                    var existingNode = cy.getElementById(existingNodeId);
+                    if (existingNode.length > 0) {
+                        var data = existingNode.data();
 
-                    // Add ID if not present
-                    if (!data.allIds.includes(nodeId)) {
-                        data.allIds.push(nodeId);
-                        data.colors.push(node.ColumnColor || '#666');
+                        // Add ID if not present
+                        if (!data.allIds.includes(nodeId)) {
+                            data.allIds.push(nodeId);
+                            data.colors.push(node.ColumnColor || '#666');
 
-                        // Update Pie Data
-                        Graph.updatePieData(data);
-                        existingNode.data(data); // Apply updates
+                            // Update Pie Data
+                            Graph.updatePieData(data);
+                            existingNode.data(data); // Apply updates
 
-                        // Update Class
-                        if (data.pieImage) existingNode.addClass('has-pie');
-                        else existingNode.removeClass('has-pie');
+                            // Update Class
+                            if (data.pieImage) existingNode.addClass('has-pie');
+                            else existingNode.removeClass('has-pie');
+
+                            // Mark as expandable since we added new data
+                            Graph.expandableNodeIds.add(existingNodeId);
+                        }
                     }
                 } else {
                     // CREATE new node
@@ -179,13 +243,19 @@
                             classes: newNodeData.pieImage ? 'has-pie' : ''
                         });
                         addedIds.add(nodeId);
+
+                        // Update Lookup
+                        Graph.nodeLookup[lookupKey] = nodeId;
+
+                        // Mark as expandable
+                        Graph.expandableNodeIds.add(nodeId);
                     }
                 }
             });
 
             if (nodesToAdd.length > 0) {
-                cy.add(nodesToAdd);
-                cy.layout({ name: 'cose', animate: true }).run();
+                var newEles = cy.add(nodesToAdd);
+                Graph.runLayout(newEles);
             }
         },
 
@@ -211,37 +281,35 @@
                 var edgeId = Graph.normalizeId(edgeID);
 
                 // --- 1. Handle Target Node Merging ---
-                // Find if target node already exists (visually)
-                // Reverted to JS filter for robustness
-                var existingTarget = cy.nodes().filter(function (ele) {
-                    return ele.data('groupNodeId') == item.TargetGroupNodeID &&
-                        ele.data('nodeValueId') == item.TargetNodeValueID;
-                });
+                var lookupKey = item.TargetGroupNodeID + '-' + item.TargetNodeValueID;
+                var existingNodeId = Graph.nodeLookup[lookupKey];
 
                 var finalTargetId = targetId; // Default to the new ID
 
-                if (existingTarget.length > 0) {
+                if (existingNodeId) {
                     // Merge into existing
-                    var existingNode = existingTarget[0];
-                    finalTargetId = existingNode.id(); // Use the existing node's ID as target
+                    var existingNode = cy.getElementById(existingNodeId);
+                    if (existingNode.length > 0) {
+                        finalTargetId = existingNodeId; // Use the existing node's ID as target
 
-                    var data = existingNode.data();
-                    if (!data.allIds.includes(targetId)) {
-                        data.allIds.push(targetId);
-                        data.colors.push(item.TargetNodeColor || '#666');
-                        Graph.updatePieData(data);
-                        existingNode.data(data);
+                        var data = existingNode.data();
+                        if (!data.allIds.includes(targetId)) {
+                            data.allIds.push(targetId);
+                            data.colors.push(item.TargetNodeColor || '#666');
+                            Graph.updatePieData(data);
+                            existingNode.data(data);
 
-                        // Update Class
-                        if (data.pieImage) existingNode.addClass('has-pie');
-                        else existingNode.removeClass('has-pie');
+                            // Update Class
+                            if (data.pieImage) existingNode.addClass('has-pie');
+                            else existingNode.removeClass('has-pie');
+
+                            // Mark as expandable
+                            Graph.expandableNodeIds.add(existingNodeId);
+                        }
                     }
                 } else {
                     // Check if we already queued it in this batch
-                    var key = item.TargetGroupNodeID + '-' + item.TargetNodeValueID;
-
-                    // If not in graph AND not in batch, add it
-                    if (!addedNodeKeys.has(key)) {
+                    if (!addedNodeKeys.has(lookupKey)) {
                         var newNodeData = {
                             id: targetId,
                             label: item.TargetNodeValue,
@@ -261,12 +329,14 @@
                             data: newNodeData,
                             classes: newNodeData.pieImage ? 'has-pie' : ''
                         });
-                        addedNodeKeys.add(key);
+                        addedNodeKeys.add(lookupKey);
+
+                        // Optimistically update lookup for this batch
+                        Graph.nodeLookup[lookupKey] = targetId;
+
+                        Graph.expandableNodeIds.add(targetId);
                     } else {
-                        // It is in the batch, we need to find it in nodesToAdd and merge?
-                        // For simplicity in this batch, we might skip merging within the same micro-batch 
-                        // or just let the next pass handle it. 
-                        // But to be correct, let's find it in nodesToAdd.
+                        // It is in the batch
                         var queuedNode = nodesToAdd.find(function (n) {
                             return n.data.groupNodeId == item.TargetGroupNodeID &&
                                 n.data.nodeValueId == item.TargetNodeValueID;
@@ -277,8 +347,6 @@
                                 queuedNode.data.allIds.push(targetId);
                                 queuedNode.data.colors.push(item.TargetNodeColor || '#666');
                                 Graph.updatePieData(queuedNode.data);
-                                // Note: Can't easily update class on queued node object without helper, 
-                                // but it will be handled when added or next update.
                                 if (queuedNode.data.pieImage) queuedNode.classes = 'has-pie';
                             }
                         }
@@ -286,8 +354,7 @@
                 }
 
                 // --- 2. Handle Source Node Mapping ---
-                // The sourceId returned by API is one of the internal IDs.
-                // We need to find the VISUAL node that contains this sourceId.
+
                 var sourceNode = cy.nodes().filter(function (ele) {
                     return ele.data('allIds') && ele.data('allIds').includes(sourceId);
                 });
@@ -299,14 +366,12 @@
 
                 // --- 3. Edge Merging ---
                 // Check if ANY edge exists between finalSourceId and finalTargetId
-                var existingEdges = cy.edges().filter(function (ele) {
-                    return (ele.source().id() === finalSourceId && ele.target().id() === finalTargetId) ||
-                        (ele.source().id() === finalTargetId && ele.target().id() === finalSourceId);
-                });
+                // Optimized: Use Set Lookup
+                var edgeKey1 = finalSourceId + '-' + finalTargetId;
+                var edgeKey2 = finalTargetId + '-' + finalSourceId; // Assuming undirected visual check
 
-                if (existingEdges.length === 0) {
+                if (!Graph.edgeLookup.has(edgeKey1) && !Graph.edgeLookup.has(edgeKey2)) {
                     // No visual edge exists, so add one
-                    // We use the specific edgeId from DB, but visually it connects the merged nodes
                     edgesToAdd.push({
                         group: 'edges',
                         data: {
@@ -316,21 +381,27 @@
                             label: edgeLabel
                         }
                     });
+                    Graph.edgeLookup.add(edgeKey1);
+                    Graph.edgeLookup.add(edgeKey2);
                 }
             });
 
-            if (nodesToAdd.length > 0) cy.add(nodesToAdd);
+            var newEles = cy.collection();
+
+            if (nodesToAdd.length > 0) {
+                newEles = newEles.union(cy.add(nodesToAdd));
+            }
 
             if (edgesToAdd.length > 0) {
                 try {
-                    cy.add(edgesToAdd);
+                    newEles = newEles.union(cy.add(edgesToAdd));
                 } catch (e) {
                     console.error("Error adding edges:", e);
                 }
             }
 
-            if (nodesToAdd.length > 0 || edgesToAdd.length > 0) {
-                cy.layout({ name: 'cose', animate: true }).run();
+            if (newEles.length > 0) {
+                Graph.runLayout(newEles);
             }
         },
 
@@ -341,27 +412,51 @@
             var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
 
             // Find nodes that are NOT fully expanded
-            // Logic: A node is not fully expanded if it has IDs in allIds that are NOT in expandedIds
-            var expandableNodes = cy.nodes().filter(function (ele) {
-                var allIds = ele.data('allIds') || [];
-                var expandedIds = ele.data('expandedIds') || [];
-                // Check if there is any ID in allIds that is NOT in expandedIds
-                return allIds.some(function (id) { return !expandedIds.includes(id); });
-            });
+            // Optimized: Use Graph.expandableNodeIds Set
+            var expandableNodes = [];
+            var idsToRemove = []; // IDs that are actually fully expanded and should be removed from Set
 
-            if (expandableNodes.length === 0) {
-                alert("No unexpanded nodes found.");
-                return;
+            // Iterate the Set
+            // Note: Sets are iterable in insertion order
+            for (var id of Graph.expandableNodeIds) {
+                if (expandableNodes.length >= batchSize) break;
+
+                var node = cy.getElementById(id);
+                if (node.length === 0) {
+                    idsToRemove.push(id); // Node removed from graph?
+                    continue;
+                }
+
+                var allIds = node.data('allIds') || [];
+                var expandedIds = node.data('expandedIds') || [];
+
+                // Check if truly expandable
+                var hasNewIds = allIds.some(function (x) { return !expandedIds.includes(x); });
+
+                if (hasNewIds) {
+                    expandableNodes.push(node);
+                } else {
+                    idsToRemove.push(id); // Fully expanded
+                }
             }
 
-            // Take batch
-            var batch = expandableNodes.slice(0, batchSize);
+            // Cleanup Set
+            idsToRemove.forEach(function (id) { Graph.expandableNodeIds.delete(id); });
+
+            if (expandableNodes.length === 0) {
+                if (Graph.expandableNodeIds.size === 0) {
+                    alert("No unexpanded nodes found.");
+                } else {
+                    alert("No unexpanded nodes found in this pass.");
+                }
+                return;
+            }
 
             // Collect IDs to expand (Granular Tracking)
             var idsToExpand = [];
             var nodeMap = new Map(); // Map SourceID -> Visual Node (to update state later)
 
-            batch.forEach(function (ele) {
+            expandableNodes.forEach(function (ele) {
                 var allIds = ele.data('allIds') || [];
                 var expandedIds = ele.data('expandedIds') || [];
 
@@ -440,6 +535,8 @@
                             var allIds = node.data('allIds');
                             if (allIds.length === expandedIds.length) {
                                 node.data('isExpanded', true);
+                                // Remove from expandable set
+                                Graph.expandableNodeIds.delete(node.id());
                             }
                         }
                     });
@@ -452,6 +549,10 @@
         },
 
         clear: function () {
+            Graph.nodeLookup = {};
+            Graph.svgCache = {};
+            Graph.edgeLookup = new Set();
+            Graph.expandableNodeIds = new Set();
             if (cy) cy.elements().remove();
         }
     };
