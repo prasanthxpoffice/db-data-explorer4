@@ -34,6 +34,7 @@
       <!-- Main Graph Area -->
       <div class="wrap">
         <div id="cy"></div>
+        <div id="statusbar-root"></div>
       </div>
     </div>
   </div>
@@ -63,6 +64,9 @@
 
       // Load Partials
       window.loadComponent('partials/expandpanel.html', '#expandpanel-root');
+      window.loadComponent('partials/search.html', '#search-root');
+      window.loadComponent('partials/settings.html', '#settings-root');
+      window.loadComponent('partials/statusbar.html', '#statusbar-root');
 
       // Initialize Graph
       if (window.Graph) {

@@ -62,6 +62,31 @@
         expandableNodeIds: new Set(), // Set: NodeInt
         isExpanding: false, // Mutex
 
+        // --- Status Bar ---
+        showStatus: function (message, type) {
+            type = type || 'info';
+            var $notification = $('#status-notification');
+            $notification.text(message)
+                .removeClass('error success info')
+                .addClass(type)
+                .addClass('show');
+
+            // Clear previous timeout if exists
+            if (this.statusTimeout) clearTimeout(this.statusTimeout);
+
+            // Auto-hide after 3 seconds
+            this.statusTimeout = setTimeout(function () {
+                $notification.removeClass('show');
+            }, 3000);
+        },
+
+        updateStats: function () {
+            if (!cy) return;
+            $('#stat-nodes').text(cy.nodes().length);
+            $('#stat-edges').text(cy.edges().length);
+            $('#stat-pending').text(Graph.expandableNodeIds.size);
+        },
+
         init: function (containerId) {
             Graph.clear();
 
@@ -448,6 +473,7 @@
                     if (allNewEles.length > 0) {
                         Graph.runLayout(allNewEles);
                     }
+                    Graph.updateStats();
                 }
             }
 
@@ -659,6 +685,7 @@
                     console.error("Error adding elements or running layout:", e);
                 }
             }
+            Graph.updateStats();
         },
 
         expandNodes: function (nodes) {
@@ -682,7 +709,7 @@
             });
 
             if (idsToExpand.length === 0) {
-                alert(window.i18n.get('graph.noNewData'));
+                Graph.showStatus(window.i18n.get('graph.noNewData'), "info");
                 return;
             }
 
@@ -763,10 +790,11 @@
                     });
 
                     Graph.isExpanding = false;
+                    Graph.updateStats();
                 },
                 error: function (err) {
                     console.error("Expansion failed", err);
-                    alert(window.i18n.get('graph.expansionFailed'));
+                    Graph.showStatus(window.i18n.get('graph.expansionFailed'), "error");
                     Graph.isExpanding = false;
                 }
             });
@@ -812,12 +840,12 @@
                         Graph.setAutoExpand(false);
                         $('#setting-auto-expand').prop('checked', false);
                         cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
-                        alert("All nodes expanded");
+                        Graph.showStatus("All nodes expanded", "success");
                     } else {
-                        alert(window.i18n.get('graph.noUnexpanded'));
+                        Graph.showStatus(window.i18n.get('graph.noUnexpanded'), "info");
                     }
                 } else {
-                    alert(window.i18n.get('graph.noUnexpandedPass'));
+                    Graph.showStatus(window.i18n.get('graph.noUnexpandedPass'), "info");
                 }
                 return;
             }
@@ -840,7 +868,7 @@
 
             if (idsToExpand.length === 0) {
                 Graph.isExpanding = false;
-                alert(window.i18n.get('graph.noNewData'));
+                Graph.showStatus(window.i18n.get('graph.noNewData'), "info");
                 return;
             }
 
@@ -929,13 +957,14 @@
                             Graph.setAutoExpand(false);
                             $('#setting-auto-expand').prop('checked', false);
                             cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
-                            alert("Auto-expansion paused after " + maxBatches + " batches.");
+                            Graph.showStatus("Auto-expansion paused after " + maxBatches + " batches.", "info");
                         }
                     }
+                    Graph.updateStats();
                 },
                 error: function (err) {
                     console.error("Expansion failed", err);
-                    alert(window.i18n.get('graph.expansionFailed'));
+                    Graph.showStatus(window.i18n.get('graph.expansionFailed'), "error");
                     Graph.isExpanding = false;
                 }
             });
@@ -953,6 +982,7 @@
             Graph.autoExpand = false;
             Graph.autoExpandCount = 0;
             if (cy) cy.elements().remove();
+            Graph.updateStats();
         },
 
         setAutoExpand: function (enabled) {
