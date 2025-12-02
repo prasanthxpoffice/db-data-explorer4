@@ -37,7 +37,8 @@
                             'text-wrap': 'wrap',
                             'text-max-width': 100,
                             'text-outline-width': 2,
-                            'text-outline-color': 'data(color)'
+                            'text-outline-color': 'data(color)',
+                            'min-zoomed-font-size': 8 // Optimization: Hide text when zoomed out
                         }
                     },
                     {
@@ -61,7 +62,8 @@
                             'text-rotation': 'autorotate',
                             'text-background-opacity': 1,
                             'text-background-color': '#fff',
-                            'text-background-shape': 'round-rectangle'
+                            'text-background-shape': 'round-rectangle',
+                            'min-zoomed-font-size': 8 // Optimization: Hide text when zoomed out
                         }
                     }
                 ],
@@ -148,10 +150,17 @@
             // If it's the very first load (total nodes == new nodes), run global layout
             var isFirstLoad = (cy.nodes().length === newElements.length);
 
+            // Optimization: Smart Animation
+            // Disable animation for large batches to prevent UI freeze
+            var shouldAnimate = true;
+            if (newElements.length > 100) {
+                shouldAnimate = false;
+            }
+
             if (isFirstLoad) {
                 var layout = cy.layout({
                     name: 'cose',
-                    animate: true,
+                    animate: shouldAnimate,
                     randomize: true,
                     fit: true,
                     padding: 50
@@ -164,7 +173,7 @@
 
                 var layout = layoutEles.layout({
                     name: 'cose',
-                    animate: true,
+                    animate: shouldAnimate,
                     randomize: false, // Keep existing nodes stable
                     fit: false // Don't fit the *layout* (we'll fit global later)
                 });
