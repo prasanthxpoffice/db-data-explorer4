@@ -197,7 +197,8 @@
             });
 
             // Layout Switcher
-            $('#setting-layout').on('change', function () {
+            // Layout Switcher - Use event delegation for dynamically loaded content
+            $(document).on('change', '#setting-layout', function () {
                 var layoutName = $(this).val();
                 Graph.changeLayout(layoutName);
             });
