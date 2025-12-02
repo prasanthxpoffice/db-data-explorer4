@@ -3,10 +3,9 @@
 
     var Graph = {
         init: function (containerId) {
-            console.log("Initializing Graph in", containerId);
             cy = cytoscape({
                 container: $(containerId),
-                style: [ // the stylesheet for the graph
+                style: [
                     {
                         selector: 'node',
                         style: {
@@ -34,7 +33,7 @@
                             'target-arrow-color': '#ccc',
                             'target-arrow-shape': 'triangle',
                             'curve-style': 'bezier',
-                            'label': 'data(label)', // Show edge label
+                            'label': 'data(label)',
                             'font-size': 10,
                             'text-rotation': 'autorotate',
                             'text-background-opacity': 1,
@@ -50,19 +49,22 @@
             });
         },
 
+        normalizeId: function (id) {
+            return String(id).trim();
+        },
+
         addNodes: function (nodesData) {
-            if (!cy) {
-                console.error("Graph not initialized");
-                return;
-            }
+            if (!cy) return;
 
             var nodesToAdd = [];
-            nodesData.forEach(function (node) {
-                // Cast ID to string to ensure consistency
-                var nodeId = String(node.NodeDataID);
+            var addedIds = new Set();
 
-                // Check if node already exists to avoid duplicates
-                if (cy.getElementById(nodeId).length === 0) {
+            nodesData.forEach(function (node) {
+                var nodeId = Graph.normalizeId(node.NodeDataID);
+
+                if (!nodeId) return;
+
+                if (cy.getElementById(nodeId).length === 0 && !addedIds.has(nodeId)) {
                     nodesToAdd.push({
                         group: 'nodes',
                         data: {
@@ -72,119 +74,100 @@
                             groupNodeId: node.GroupNodeID,
                             nodeValueId: node.NodeValueID,
                             nodeValueDate: node.NodeValueDate,
-                            isExpanded: false // Default to false
+                            isExpanded: false
                         }
                     });
+                    addedIds.add(nodeId);
                 }
             });
 
             if (nodesToAdd.length > 0) {
                 cy.add(nodesToAdd);
                 cy.layout({ name: 'cose', animate: true }).run();
-                console.log("Added " + nodesToAdd.length + " nodes to graph");
-            } else {
-                console.log("No new nodes to add");
             }
         },
 
         addExpansionResults: function (results) {
             if (!cy) return;
 
-            console.log("Expansion Results (Raw):", results);
-            if (results.length > 0) {
-                console.log("Result Keys:", Object.keys(results[0]));
-            }
-
             var nodesToAdd = [];
             var edgesToAdd = [];
             var sourceNodeIds = new Set();
 
+            var addedNodeIds = new Set();
+            var addedEdgeIds = new Set();
+            var addedEdgeConnections = new Set();
+
             results.forEach(function (item) {
-                // Ensure we handle case-sensitivity or missing columns
-                // Actual keys from API: RelationDataID, SourceNodeDataID, TargetNodeDataID, Relation
                 var sourceNodeID = item.SourceNodeDataID || item.SourceNodeID;
                 var targetNodeID = item.TargetNodeDataID || item.TargetNodeID;
                 var edgeID = item.RelationDataID || item.EdgeID;
                 var edgeLabel = item.Relation || item.EdgeLabel;
 
-                if (!sourceNodeID || !targetNodeID || !edgeID) {
-                    console.warn("Missing ID in result item:", item);
-                    return;
-                }
+                if (!sourceNodeID || !targetNodeID || !edgeID) return;
 
                 sourceNodeIds.add(sourceNodeID);
 
-                var targetId = String(targetNodeID);
-                var sourceId = String(sourceNodeID);
-                var edgeId = String(edgeID);
+                var targetId = Graph.normalizeId(targetNodeID);
+                var sourceId = Graph.normalizeId(sourceNodeID);
+                var edgeId = Graph.normalizeId(edgeID);
 
-                // Add Target Node if not exists
                 if (cy.getElementById(targetId).length === 0) {
-                    // Check if we already added it in this batch to avoid dupes in array
-                    var alreadyInBatch = nodesToAdd.some(n => n.data.id === targetId);
-                    if (!alreadyInBatch) {
+                    if (!addedNodeIds.has(targetId)) {
                         nodesToAdd.push({
                             group: 'nodes',
                             data: {
                                 id: targetId,
-                                label: item.TargetNodeValue, // Mapped from TargetNodeValue
-                                color: item.TargetNodeColor || '#666', // Mapped from TargetNodeColor
+                                label: item.TargetNodeValue,
+                                color: item.TargetNodeColor || '#666',
                                 groupNodeId: item.TargetGroupNodeID,
                                 nodeValueId: item.TargetNodeValueID,
-                                nodeValueDate: item.TargetNodeValueDate, // Corrected from TargetNodeDate based on keys
+                                nodeValueDate: item.TargetNodeValueDate,
                                 isExpanded: false
                             }
                         });
+                        addedNodeIds.add(targetId);
                     }
                 }
 
-                // Add Edge if not exists
                 if (cy.getElementById(edgeId).length === 0) {
-                    var alreadyInBatch = edgesToAdd.some(e => e.data.id === edgeId);
-                    if (!alreadyInBatch) {
+                    if (!addedEdgeIds.has(edgeId)) {
+                        var connectionKey1 = sourceId + "-" + targetId;
+                        var connectionKey2 = targetId + "-" + sourceId;
 
-                        // Check for existing connection in EITHER direction (A->B or B->A)
-                        var existingEdge = cy.edges().filter(function (ele) {
-                            return (ele.source().id() === sourceId && ele.target().id() === targetId) ||
-                                (ele.source().id() === targetId && ele.target().id() === sourceId);
-                        });
+                        if (!addedEdgeConnections.has(connectionKey1) && !addedEdgeConnections.has(connectionKey2)) {
+                            var sourceNode = cy.getElementById(sourceId);
+                            var existingEdge = false;
 
-                        // Also check in current batch
-                        var batchEdge = edgesToAdd.some(function (e) {
-                            return (e.data.source === sourceId && e.data.target === targetId) ||
-                                (e.data.source === targetId && e.data.target === sourceId);
-                        });
-
-                        if (existingEdge.length === 0 && !batchEdge) {
-                            // Verify source exists
-                            var sourceExists = cy.getElementById(sourceId).length > 0;
-                            var sourceInBatch = nodesToAdd.some(n => n.data.id === sourceId);
-
-                            if (!sourceExists && !sourceInBatch) {
-                                console.error("CRITICAL: Source node NOT FOUND for edge:", edgeId, "SourceID:", sourceId);
+                            if (sourceNode.length > 0) {
+                                var connected = sourceNode.connectedEdges();
+                                existingEdge = connected.some(function (ele) {
+                                    return (ele.source().id() === sourceId && ele.target().id() === targetId) ||
+                                        (ele.source().id() === targetId && ele.target().id() === sourceId);
+                                });
                             }
 
-                            edgesToAdd.push({
-                                group: 'edges',
-                                data: {
-                                    id: edgeId,
-                                    source: sourceId,
-                                    target: targetId,
-                                    label: edgeLabel
-                                }
-                            });
-                        } else {
-                            console.log("Skipping duplicate/reverse edge:", sourceId, "->", targetId);
+                            if (!existingEdge) {
+                                edgesToAdd.push({
+                                    group: 'edges',
+                                    data: {
+                                        id: edgeId,
+                                        source: sourceId,
+                                        target: targetId,
+                                        label: edgeLabel
+                                    }
+                                });
+                                addedEdgeIds.add(edgeId);
+                                addedEdgeConnections.add(connectionKey1);
+                                addedEdgeConnections.add(connectionKey2);
+                            }
                         }
                     }
                 }
             });
 
-            console.log("Adding Nodes:", nodesToAdd.length, "Edges:", edgesToAdd.length);
-
             if (nodesToAdd.length > 0) cy.add(nodesToAdd);
 
-            // Add edges after nodes to ensure targets exist
             if (edgesToAdd.length > 0) {
                 try {
                     cy.add(edgesToAdd);
@@ -197,13 +180,10 @@
                 cy.layout({ name: 'cose', animate: true }).run();
             }
 
-            // Mark source nodes as expanded
             sourceNodeIds.forEach(function (id) {
-                var node = cy.getElementById(String(id));
+                var node = cy.getElementById(Graph.normalizeId(id));
                 if (node.length > 0) {
                     node.data('isExpanded', true);
-                    node.style('border-width', 4); // Visual cue for expanded
-                    node.style('border-color', '#333');
                 }
             });
         },
@@ -211,11 +191,9 @@
         expandNextBatch: function () {
             if (!cy) return;
 
-            // 1. Get Settings
             var batchSize = parseInt($('#setting-batch-size').val()) || 50;
             var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
 
-            // 2. Get Unexpanded Nodes
             var unexpanded = cy.nodes().filter(function (ele) {
                 return ele.data('isExpanded') === false;
             });
@@ -225,25 +203,19 @@
                 return;
             }
 
-            // Take batch
             var batch = unexpanded.slice(0, batchSize);
             var sourceIds = batch.map(function (ele) { return ele.id(); });
 
-            // 3. Get Filters from Legends Grid
             var filters = [];
             var $grid = $('#legends-grid');
             if ($grid.length > 0) {
                 var selectedRowIds = $grid.jqGrid('getGridParam', 'selarrrow');
                 if (selectedRowIds) {
                     selectedRowIds.forEach(function (rowId) {
-                        // Get Date Inputs
                         var $row = $grid.find('tr#' + rowId);
-                        var fromDate = $row.find('.from-date').val(); // dd/mm/yyyy
+                        var fromDate = $row.find('.from-date').val();
                         var toDate = $row.find('.to-date').val();
 
-                        // Convert to yyyy-mm-dd for API if needed, or let API handle it.
-                        // Assuming API expects ISO or standard date. 
-                        // Let's convert dd/mm/yyyy to yyyy-mm-dd
                         function parseDate(d, isFrom) {
                             if (!d) return isFrom ? '1900-01-01' : '9999-12-31';
                             var parts = d.split('/');
@@ -260,22 +232,17 @@
                 }
             }
 
-            // 4. Call API
             var config = window.parent.APP_CONFIG;
-            if (!config) {
-                console.error("APP_CONFIG not found");
-                return;
-            }
+            if (!config) return;
 
             var payload = {
-                ViewGroupID: 1, // Default
+                ViewGroupID: 1,
                 SourceNodeDataIDs: sourceIds,
                 FilterNodes: filters,
                 MaxNeighbors: maxNeighbors,
                 Lang: config.Lang
             };
 
-            // Get ViewGroupID from dropdown
             var viewGroupId = $('#view-groups-dropdown').val();
             if (viewGroupId) payload.ViewGroupID = parseInt(viewGroupId);
 
@@ -287,13 +254,10 @@
                 success: function (data) {
                     Graph.addExpansionResults(data);
 
-                    // Mark all source nodes as expanded, even if they returned no results
                     sourceIds.forEach(function (id) {
-                        var node = cy.getElementById(String(id));
+                        var node = cy.getElementById(Graph.normalizeId(id));
                         if (node.length > 0) {
                             node.data('isExpanded', true);
-                            node.style('border-width', 4);
-                            node.style('border-color', '#333');
                         }
                     });
                 },
@@ -309,7 +273,6 @@
         }
     };
 
-    // Expose Graph globally
     window.Graph = Graph;
 
 })();
