@@ -53,6 +53,10 @@
         </div>
     </div>
 
+    <div id="node-settings-modal" title="Entity Settings" style="display:none;">
+        <!-- Content loaded dynamically -->
+    </div>
+
     <div id="relation-settings-modal" title="Relation Settings" style="display:none;">
         <!-- Content loaded dynamically -->
     </div>
@@ -90,7 +94,11 @@
                     }
                 }).fail(function () {
                     console.error("Failed to load " + url);
-                    alert(window.i18n.get('settings.errorLoading'));
+                    if (window.Graph && window.Graph.showStatus) {
+                        window.Graph.showStatus(window.i18n.get('settings.errorLoading'), 'error');
+                    } else {
+                        alert(window.i18n.get('settings.errorLoading'));
+                    }
                 });
             }
 

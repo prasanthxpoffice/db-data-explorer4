@@ -202,6 +202,8 @@
                 var layoutName = $(this).val();
                 Graph.changeLayout(layoutName);
             });
+
+
         },
 
         normalizeId: function (id) {
