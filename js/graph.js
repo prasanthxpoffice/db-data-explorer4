@@ -105,6 +105,13 @@
                         }
                     },
                     {
+                        selector: 'node.expanded',
+                        style: {
+                            'border-color': '#333',
+                            'border-width': 2
+                        }
+                    },
+                    {
                         selector: 'edge',
                         style: {
                             'width': 2,
@@ -330,6 +337,11 @@
 
                                     data.colors.push(node.ColumnColor || '#666');
                                     Graph.updatePieData(data);
+
+                                    // Clear Expanded Flag since we added new data
+                                    data.flags &= ~FLAGS.EXPANDED;
+                                    existingNode.removeClass('expanded');
+
                                     existingNode.data(data);
 
                                     // Check Flag for Class
@@ -449,6 +461,11 @@
 
                                     data.colors.push(item.TargetNodeColor || '#666');
                                     Graph.updatePieData(data);
+
+                                    // Clear Expanded Flag since we added new data
+                                    data.flags &= ~FLAGS.EXPANDED;
+                                    existingNode.removeClass('expanded');
+
                                     existingNode.data(data);
 
                                     if (data.flags & FLAGS.HAS_PIE) existingNode.addClass('has-pie');
@@ -729,6 +746,7 @@
                                 // Optimization: Update Flag
                                 var flags = node.data('flags') | FLAGS.EXPANDED;
                                 node.data('flags', flags);
+                                node.addClass('expanded');
 
                                 var nodeIdInt = Interner.get(node.id());
                                 Graph.expandableNodeIds.delete(nodeIdInt);

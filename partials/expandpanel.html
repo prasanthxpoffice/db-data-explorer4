@@ -54,8 +54,8 @@
         // Listen for Data Source selection to expand Legends
         $(document).on('viewGroupChanged', function (e, viewGroupId) {
             if (viewGroupId) {
-                // Expand Legends (Index 1)
-                $("#main-accordion").accordion("option", "active", 1);
+                // Expand Search (Index 2) - Changed from Legends (Index 1)
+                $("#main-accordion").accordion("option", "active", 2);
             }
         });
     })();

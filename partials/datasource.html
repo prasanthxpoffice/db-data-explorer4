@@ -41,6 +41,12 @@
                             text: text
                         }));
                     });
+
+                    // Auto-select if only one item
+                    if (response.length === 1) {
+                        var singleValue = response[0].ViewGroupID;
+                        $dropdown.val(singleValue).trigger('change');
+                    }
                 } else {
                     console.error("Expected array response, got:", response);
                     $dropdown.append('<option value="">' + window.i18n.get('datasource.errorData') + '</option>');
