@@ -165,6 +165,11 @@
                     rows: 1
                 }
             });
+
+            cy.on('dbltap', 'node', function (evt) {
+                var node = evt.target;
+                Graph.expandNodes([node]);
+            });
         },
 
         normalizeId: function (id) {
@@ -652,6 +657,117 @@
                     console.error("Error adding elements or running layout:", e);
                 }
             }
+        },
+
+        expandNodes: function (nodes) {
+            if (!cy) return;
+            if (Graph.isExpanding) return;
+
+            var idsToExpand = [];
+            var nodeMap = new Map();
+
+            nodes.forEach(function (ele) {
+                var allIds = ele.data('allIds') || [];
+                var expandedIds = ele.data('expandedIds') || [];
+                var expandedSet = new Set(expandedIds);
+
+                var newIds = allIds.filter(function (id) { return !expandedSet.has(id); });
+
+                newIds.forEach(function (idInt) {
+                    idsToExpand.push(Interner.resolve(idInt));
+                    nodeMap.set(idInt, ele);
+                });
+            });
+
+            if (idsToExpand.length === 0) {
+                alert(window.i18n.get('graph.noNewData'));
+                return;
+            }
+
+            Graph.isExpanding = true;
+
+            var config = window.parent.APP_CONFIG;
+            if (!config) {
+                Graph.isExpanding = false;
+                return;
+            }
+
+            var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
+            var payload = {
+                ViewGroupID: 1,
+                SourceNodeDataIDs: idsToExpand,
+                FilterNodes: [], // No filters for direct expansion? Or should we apply global filters?
+                MaxNeighbors: maxNeighbors,
+                Lang: config.Lang
+            };
+
+            var viewGroupId = $('#view-groups-dropdown').val();
+            if (viewGroupId) payload.ViewGroupID = parseInt(viewGroupId);
+
+            // Apply global filters if present?
+            var $grid = $('#legends-grid');
+            if ($grid.length > 0) {
+                var selectedRowIds = $grid.jqGrid('getGridParam', 'selarrrow');
+                if (selectedRowIds) {
+                    selectedRowIds.forEach(function (rowId) {
+                        var $row = $grid.find('tr#' + rowId);
+                        var fromDate = $row.find('.from-date').val();
+                        var toDate = $row.find('.to-date').val();
+
+                        function parseDate(d, isFrom) {
+                            if (!d) return isFrom ? '1900-01-01' : '9999-12-31';
+                            var parts = d.split('/');
+                            if (parts.length === 3) return parts[2] + '-' + parts[1] + '-' + parts[0];
+                            return isFrom ? '1900-01-01' : '9999-12-31';
+                        }
+
+                        payload.FilterNodes.push({
+                            NodeID: parseInt(rowId),
+                            FromDate: parseDate(fromDate, true),
+                            ToDate: parseDate(toDate, false)
+                        });
+                    });
+                }
+            }
+
+            $.ajax({
+                url: config.api.nodesExpand.path,
+                method: config.api.nodesExpand.method,
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function (data) {
+                    Graph.addExpansionResults(data);
+
+                    idsToExpand.forEach(function (idStr) {
+                        var idInt = Interner.get(idStr);
+                        var node = nodeMap.get(idInt);
+                        if (node) {
+                            var expandedIds = node.data('expandedIds') || [];
+                            if (!expandedIds.includes(idInt)) {
+                                expandedIds.push(idInt);
+                                node.data('expandedIds', expandedIds);
+                            }
+
+                            var allIds = node.data('allIds');
+                            if (allIds.length === expandedIds.length) {
+                                var flags = node.data('flags') | FLAGS.EXPANDED;
+                                node.data('flags', flags);
+                                node.addClass('expanded');
+
+                                var nodeIdInt = Interner.get(node.id());
+                                Graph.expandableNodeIds.delete(nodeIdInt);
+                            }
+                        }
+                    });
+
+                    Graph.isExpanding = false;
+                },
+                error: function (err) {
+                    console.error("Expansion failed", err);
+                    alert(window.i18n.get('graph.expansionFailed'));
+                    Graph.isExpanding = false;
+                }
+            });
         },
 
         expandNextBatch: function () {
