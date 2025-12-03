@@ -41,6 +41,12 @@
 
   <script>
     $(document).ready(function () {
+      // Check config to potentially hide language switcher
+      var appConfig = window.APP_CONFIG || (window.parent && window.parent.APP_CONFIG);
+      if (appConfig && appConfig.showLanguageSelector === false) {
+        $('#lang-switch').hide();
+      }
+
       // Language Switcher
       $('#lang-switch').on('click', function () {
         window.i18n.toggleLanguage();
