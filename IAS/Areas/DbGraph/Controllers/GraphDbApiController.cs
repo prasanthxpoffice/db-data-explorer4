@@ -20,7 +20,7 @@ namespace IAS.Areas.DbGraph.Controllers
 
         public GraphDbApiController()
         {
-            var defaultConnection = ConfigurationManager.ConnectionStrings["DefaultConnection"];
+            var defaultConnection = ConfigurationManager.ConnectionStrings["IASConnectionString"];
             _connectionString = defaultConnection?.ConnectionString;
 
             if (string.IsNullOrEmpty(_connectionString))
