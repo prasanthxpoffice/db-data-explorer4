@@ -63,7 +63,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results, JsonRequestBehavior.AllowGet);
+            return LargeJson(results, JsonRequestBehavior.AllowGet);
         }
 
         [HttpGet]
@@ -93,7 +93,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results, JsonRequestBehavior.AllowGet);
+            return LargeJson(results, JsonRequestBehavior.AllowGet);
         }
 
         [HttpGet]
@@ -126,7 +126,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results, JsonRequestBehavior.AllowGet);
+            return LargeJson(results, JsonRequestBehavior.AllowGet);
         }
 
         [HttpGet]
@@ -166,7 +166,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results, JsonRequestBehavior.AllowGet);
+            return LargeJson(results, JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]
@@ -226,7 +226,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results, JsonRequestBehavior.AllowGet);
+            return LargeJson(results, JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]
@@ -318,7 +318,7 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results);
+            return LargeJson(results);
         }
 
         [HttpPost]
@@ -382,7 +382,17 @@ namespace IAS.Areas.DbGraph.Controllers
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
             ).ToList();
 
-            return Json(results);
+            return LargeJson(results);
         }
-}
+
+        protected JsonResult LargeJson(object data, JsonRequestBehavior behavior = JsonRequestBehavior.DenyGet)
+        {
+            return new JsonResult
+            {
+                Data = data,
+                JsonRequestBehavior = behavior,
+                MaxJsonLength = int.MaxValue
+            };
+        }
+    }
 }
