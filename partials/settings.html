@@ -159,7 +159,7 @@
             $('#setting-layout').on('change', function () {
                 var layoutName = $(this).val();
                 if (window.Graph && window.Graph.changeLayout) {
-                    window.Graph.changeLayout(layoutName);
+                    window.Graph.changeLayout(layoutName, true); // Animate on user change
                 }
             });
 

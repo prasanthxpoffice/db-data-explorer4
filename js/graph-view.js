@@ -58,13 +58,13 @@
         return result;
     };
 
-    Graph.changeLayout = function (layoutName) {
+    Graph.changeLayout = function (layoutName, shouldAnimate) {
         if (!Graph.cy) return;
 
         var layoutConfig = {
             name: layoutName,
-            animate: false, // Disable animation for speed
-            // animationDuration: 500, // Removed
+            animate: shouldAnimate === true, // Use flag, default to false if undefined
+            animationDuration: 500,
             padding: 30
         };
 
@@ -76,7 +76,7 @@
                 layoutConfig.edgeElasticity = 100;
                 layoutConfig.nestingFactor = 5;
                 layoutConfig.gravity = 80;
-                layoutConfig.numIter = 100; // Reduced from 500 for speed
+                layoutConfig.numIter = 500; // Increased for better ("neater") layout quality
                 layoutConfig.initialTemp = 200;
                 layoutConfig.coolingFactor = 0.95;
                 layoutConfig.minTemp = 1.0;

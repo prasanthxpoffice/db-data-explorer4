@@ -22,7 +22,7 @@
                 hideEdgesOnViewport: true,
                 hideLabelsOnViewport: true,
                 boxSelectionEnabled: false, // Disable box selection for performance
-                minZoomedFontSize: 12, // Hide text when zoomed out
+                minZoomedFontSize: 12, // Hide text sooner when zoomed out (increased from 12)
                 style: [
                     {
                         selector: 'node',
@@ -83,6 +83,14 @@
                         selector: '.hidden-legend',
                         style: {
                             'display': 'none'
+                        }
+                    },
+                    {
+                        selector: '.hide-labels',
+                        style: {
+                            'text-opacity': 0,
+                            'text-background-opacity': 0,
+                            'text-border-opacity': 0
                         }
                     }
                 ],
@@ -145,6 +153,30 @@
                 }
             });
 
+
+            // Manual Level of Detail (LOD) - Hide labels when zoomed out
+            var zoomTimeout;
+            var toggleLOD = function () {
+                var zoom = Graph.cy.zoom();
+                // Threshold: Hide labels if zoom is less than 0.75 (75%)
+                var showLabels = zoom >= 0.75;
+
+                Graph.cy.batch(function () {
+                    if (showLabels) {
+                        Graph.cy.elements().removeClass('hide-labels');
+                    } else {
+                        Graph.cy.elements().addClass('hide-labels');
+                    }
+                });
+            };
+
+            Graph.cy.on('zoom', function () {
+                if (zoomTimeout) clearTimeout(zoomTimeout);
+                zoomTimeout = setTimeout(toggleLOD, 100); // Debounce 100ms
+            });
+
+            // Initial check
+            toggleLOD();
 
         },
 
