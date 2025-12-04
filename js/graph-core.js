@@ -16,13 +16,13 @@
         init: function (containerId) {
             Graph.cy = cytoscape({
                 container: $(containerId),
-                textureOnViewport: false, // Disabled to allow animations (blinking) during scroll
+                textureOnViewport: true, // Enabled for performance (animations pause during scroll)
                 pixelRatio: 1,
                 motionBlur: false,
                 hideEdgesOnViewport: true,
                 hideLabelsOnViewport: true,
                 boxSelectionEnabled: false, // Disable box selection for performance
-                minZoomedFontSize: 12, // Hide text sooner when zoomed out (increased from 12)
+                minZoomedFontSize: 8, // Efficiently hide labels when zoomed out (native performance)
                 style: [
                     {
                         selector: 'node',
@@ -83,14 +83,6 @@
                         selector: '.hidden-legend',
                         style: {
                             'display': 'none'
-                        }
-                    },
-                    {
-                        selector: '.hide-labels',
-                        style: {
-                            'text-opacity': 0,
-                            'text-background-opacity': 0,
-                            'text-border-opacity': 0
                         }
                     },
                     {
@@ -160,31 +152,6 @@
                     $(document).trigger('nodeSelected', [null]);
                 }
             });
-
-
-            // Manual Level of Detail (LOD) - Hide labels when zoomed out
-            var zoomTimeout;
-            var toggleLOD = function () {
-                var zoom = Graph.cy.zoom();
-                // Threshold: Hide labels if zoom is less than 0.45 (45%)
-                var showLabels = zoom >= 0.45;
-
-                Graph.cy.batch(function () {
-                    if (showLabels) {
-                        Graph.cy.elements().removeClass('hide-labels');
-                    } else {
-                        Graph.cy.elements().addClass('hide-labels');
-                    }
-                });
-            };
-
-            Graph.cy.on('zoom', function () {
-                if (zoomTimeout) clearTimeout(zoomTimeout);
-                zoomTimeout = setTimeout(toggleLOD, 100); // Debounce 100ms
-            });
-
-            // Initial check
-            toggleLOD();
 
         },
 
