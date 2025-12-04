@@ -72,11 +72,11 @@
     <!-- Graph Actions -->
     <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
         <h4 data-i18n="settings.actionsTitle" style="margin: 0 0 10px 0; color: #555;">Graph Actions</h4>
-        <button id="btn-hide-leaves"
+        <button id="btn-hide-leaves" data-i18n="settings.hideLeaves"
             style="width: 100%; padding: 8px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Hide Leaves
         </button>
-        <button id="btn-save-image"
+        <button id="btn-save-image" data-i18n="settings.saveImage"
             style="width: 100%; margin-top: 10px; padding: 8px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Save as Image
         </button>
@@ -125,8 +125,6 @@
                     console.error("Failed to load " + url);
                     if (window.Graph && window.Graph.showStatus) {
                         window.Graph.showStatus(window.i18n.get('settings.errorLoading'), 'error');
-                    } else {
-                        alert(window.i18n.get('settings.errorLoading'));
                     }
                 });
             }

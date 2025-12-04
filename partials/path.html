@@ -5,7 +5,7 @@
         <div style="display: flex; gap: 5px;">
             <input type="text" id="path-source-input" readonly placeholder="Select a node & click Set"
                 style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; background: #f9f9f9;">
-            <button id="set-source-btn" class="btn-sm"
+            <button id="set-source-btn" class="btn-sm" data-i18n="path.set"
                 style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
                 Set
             </button>
@@ -18,7 +18,7 @@
         <div style="display: flex; gap: 5px;">
             <input type="text" id="path-target-input" readonly placeholder="Select a node & click Set"
                 style="flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; background: #f9f9f9;">
-            <button id="set-target-btn" class="btn-sm"
+            <button id="set-target-btn" class="btn-sm" data-i18n="path.set"
                 style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
                 Set
             </button>
@@ -79,7 +79,7 @@
                 $('#path-source-input').val(node.data('label') || node.id());
                 updateAddButton();
             } else {
-                alert(t('path.selectOne', "Please select exactly one node in the graph first."));
+                window.Graph.showStatus(t('path.selectOne', "Please select exactly one node in the graph first."), 'warning');
             }
         });
 
@@ -90,7 +90,7 @@
                 $('#path-target-input').val(node.data('label') || node.id());
                 updateAddButton();
             } else {
-                alert(t('path.selectOne', "Please select exactly one node in the graph first."));
+                window.Graph.showStatus(t('path.selectOne', "Please select exactly one node in the graph first."), 'warning');
             }
         });
 
@@ -108,12 +108,12 @@
 
                 if (pathResult && pathResult.found) {
                     if (pathResult.isDuplicate) {
-                        alert(t('path.duplicate', "Path already exists and is highlighted."));
+                        window.Graph.showStatus(t('path.duplicate', "Path already exists and is highlighted."), 'info');
                     } else {
                         addPathItem(pathResult.id, sourceLabel, targetLabel, pathResult.length, pathResult.color);
                     }
                 } else {
-                    alert(t('path.notFound', "No path found between these nodes."));
+                    window.Graph.showStatus(t('path.notFound', "No path found between these nodes."), 'warning');
                 }
             } else {
                 console.error("Graph.findShortestPath not implemented");

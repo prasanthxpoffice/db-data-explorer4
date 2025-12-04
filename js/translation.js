@@ -99,7 +99,22 @@ const translations = {
         "entityinfo.noSelection": "Click a node to view details",
         "entityinfo.nodeId": "Node ID",
         "entityinfo.nodeType": "Type",
-        "entityinfo.relationship": "Relationship"
+        "entityinfo.relationship": "Relationship",
+        "settings.actionsTitle": "Graph Actions",
+        "settings.hideLeaves": "Hide Leaves",
+        "settings.saveImage": "Save as Image",
+        "settings.maxDepth": "Path Finding Max Depth",
+        "search.findPaths": "Find Paths Between Nodes",
+        "graph.noLeaves": "No leaf nodes found to hide.",
+        "path.set": "Set",
+        "graph.nodes": "Nodes",
+        "graph.edges": "Edges",
+        "graph.pending": "Pending",
+        "graph.leavesHidden": "Hidden {0} leaf nodes",
+        "entityinfo.label": "Label:",
+        "entityinfo.id": "ID:",
+        "entityinfo.noConnectedNodes": "No connected nodes",
+        "graph.allExpanded": "All nodes expanded"
     },
     "ar-AE": {
         "app.title": "مستكشف بيانات الرسم البياني",
@@ -200,7 +215,22 @@ const translations = {
         "entityinfo.noSelection": "انقر على عقدة لعرض التفاصيل",
         "entityinfo.nodeId": "معرف العقدة",
         "entityinfo.nodeType": "النوع",
-        "entityinfo.relationship": "العلاقة"
+        "entityinfo.relationship": "العلاقة",
+        "settings.actionsTitle": "إجراءات الرسم البياني",
+        "settings.hideLeaves": "إخفاء الأوراق",
+        "settings.saveImage": "حفظ كصورة",
+        "settings.maxDepth": "أقصى عمق للبحث عن المسار",
+        "search.findPaths": "البحث عن المسارات بين العقد",
+        "graph.noLeaves": "لم يتم العثور على أوراق لإخفائها.",
+        "path.set": "تعيين",
+        "graph.nodes": "العقد",
+        "graph.edges": "الحواف",
+        "graph.pending": "قيد الانتظار",
+        "graph.leavesHidden": "تم إخفاء {0} عقد ورقية",
+        "entityinfo.label": "تسمية:",
+        "entityinfo.id": "معرف:",
+        "entityinfo.noConnectedNodes": "لا توجد عقد متصلة",
+        "graph.allExpanded": "تم توسيع جميع العقد"
     }
 };
 

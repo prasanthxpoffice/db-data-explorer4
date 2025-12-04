@@ -30,7 +30,10 @@
                             'text-halign': 'center',
                             'color': '#000',
                             'text-outline-width': 2,
-                            'text-outline-color': '#fff'
+                            'text-outline-color': '#fff',
+                            'text-wrap': 'wrap',
+                            'text-max-width': 45,
+                            'text-overflow-wrap': 'anywhere'
                         }
                     },
                     {
@@ -50,7 +53,9 @@
                             'curve-style': 'bezier',
                             'label': 'data(label)',
                             'font-size': 8,
-                            'text-rotation': 'autorotate'
+                            'text-rotation': 'autorotate',
+                            'text-wrap': 'wrap',
+                            'text-max-width': 100
                         }
                     }
                 ],
@@ -322,7 +327,7 @@
                     Graph.processExpansionResults(results, nodeIdentities);
                     Graph.isExpanding = false;
 
-                    if (Graph.autoExpand && Graph.unexpandedNodes.size > 0) {
+                    if (Graph.autoExpand) {
                         setTimeout(function () {
                             Graph.expandNextBatch();
                         }, 500);
@@ -510,7 +515,12 @@
 
         // Expand next batch
         expandNextBatch: function (batchSize) {
-            if (Graph.isExpanding || Graph.unexpandedNodes.size === 0) return;
+            if (Graph.isExpanding) return;
+
+            if (Graph.unexpandedNodes.size === 0) {
+                Graph.showStatus(window.i18n.get('graph.allExpanded', 'All nodes expanded'), 'success');
+                return;
+            }
 
             batchSize = batchSize || 10;
             var batch = [];
@@ -541,6 +551,23 @@
             Graph.autoExpand = enabled;
             if (enabled && Graph.unexpandedNodes.size > 0) {
                 Graph.expandNextBatch();
+            }
+        },
+
+        statusTimeout: null,
+
+        showStatus: function (message, type, duration) {
+            var $notification = $('#status-notification');
+            $notification.removeClass('error success info').addClass(type || 'info').text(message).addClass('show');
+
+            if (Graph.statusTimeout) {
+                clearTimeout(Graph.statusTimeout);
+            }
+
+            if (duration !== 0) {
+                Graph.statusTimeout = setTimeout(function () {
+                    $notification.removeClass('show');
+                }, duration || 3000);
             }
         },
 
@@ -636,13 +663,13 @@
 
                     if (results && results.error) {
                         console.error("Server error:", results.error);
-                        alert("Server Error: " + results.error);
+                        Graph.showStatus("Server Error: " + results.error, 'error');
                         Graph.hideLoading();
                         return;
                     }
 
                     if (!results || results.length === 0) {
-                        alert(window.i18n.get('path.notFound', 'No paths found between selected nodes within depth limit.'));
+                        Graph.showStatus(window.i18n.get('path.notFound', 'No paths found between selected nodes within depth limit.'), 'info');
                         Graph.hideLoading();
                         return;
                     }
@@ -657,7 +684,7 @@
                 },
                 error: function (xhr, status, error) {
                     console.error("Path finding error:", error);
-                    alert(window.i18n.get('app.errorLoading', 'Error loading data'));
+                    Graph.showStatus(window.i18n.get('app.errorLoading', 'Error loading data'), 'error');
                     Graph.hideLoading();
                 }
             });
@@ -795,8 +822,10 @@
                 console.log('Hidden ' + removedCount + ' leaf nodes');
                 if (removedCount > 0) {
                     Graph.updateStats();
+                    var msg = (window.i18n ? window.i18n.get('graph.leavesHidden') : 'Hidden {0} leaf nodes').replace('{0}', removedCount);
+                    Graph.showStatus(msg, 'success');
                 } else {
-                    alert("No leaf nodes found to hide.");
+                    Graph.showStatus(window.i18n ? window.i18n.get('graph.noLeaves') : "No leaf nodes found to hide.", 'info');
                 }
             });
         },

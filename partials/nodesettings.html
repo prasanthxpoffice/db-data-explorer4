@@ -63,7 +63,7 @@
             },
             error: function (xhr, status, error) {
                 console.error("Error fetching group nodes:", error);
-                alert(window.i18n.get('nodesettings.error.fetchGroupNodes'));
+                window.Graph.showStatus(window.i18n.get('nodesettings.error.fetchGroupNodes'), 'error');
                 // Initialize grid without dropdown options if fetch fails
                 initGrid("");
             }
@@ -122,7 +122,7 @@
                             // Handle error
                             onError: function (rowid, jqXHR, textStatus) {
                                 console.error("Save failed:", textStatus);
-                                alert(window.i18n.get('nodesettings.error.save'));
+                                window.Graph.showStatus(window.i18n.get('nodesettings.error.save'), 'error');
                             }
                         }
                     }
@@ -146,7 +146,7 @@
                 },
                 loadError: function (xhr, status, error) {
                     console.error("Grid load error:", error);
-                    alert(window.i18n.get('nodesettings.error.load'));
+                    window.Graph.showStatus(window.i18n.get('nodesettings.error.load'), 'error');
                 }
             });
 

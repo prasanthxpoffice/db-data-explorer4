@@ -113,7 +113,7 @@
                             },
                             onError: function (rowid, jqXHR, textStatus) {
                                 console.error("Save failed:", textStatus);
-                                alert(window.i18n.get('nodesettings.error.save'));
+                                window.Graph.showStatus(window.i18n.get('nodesettings.error.save'), 'error');
                             }
                         }
                     }
@@ -139,7 +139,7 @@
                 },
                 loadError: function (xhr, status, error) {
                     console.error("Grid load error:", error);
-                    alert(window.i18n.get('nodesettings.error.load'));
+                    window.Graph.showStatus(window.i18n.get('nodesettings.error.load'), 'error');
                 }
             });
 

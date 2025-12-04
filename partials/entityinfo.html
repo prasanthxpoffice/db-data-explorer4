@@ -45,7 +45,7 @@
 
                 // Add any additional properties
                 if (nodeData.label) {
-                    nodeInfoHtml += '<div style="margin-bottom: 8px;"><strong>Label:</strong> ' + nodeData.label + '</div>';
+                    nodeInfoHtml += '<div style="margin-bottom: 8px;"><strong data-i18n="entityinfo.label">Label:</strong> ' + nodeData.label + '</div>';
                 }
 
                 nodeInfoHtml += '</div>';
@@ -59,12 +59,12 @@
                         connectedHtml += '<div style="padding: 10px; margin-bottom: 8px; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 12px;">';
                         connectedHtml += '<div style="margin-bottom: 4px;"><strong>' + (conn.nodeLabel || conn.nodeId) + '</strong></div>';
                         connectedHtml += '<div style="color: #666; font-size: 11px;"><span data-i18n="entityinfo.relationship">Relationship:</span> ' + (conn.relationship || 'N/A') + '</div>';
-                        connectedHtml += '<div style="color: #999; font-size: 11px;">ID: ' + conn.nodeId + '</div>';
+                        connectedHtml += '<div style="color: #999; font-size: 11px;"><span data-i18n="entityinfo.id">ID:</span> ' + conn.nodeId + '</div>';
                         connectedHtml += '</div>';
                     });
                     connectedHtml += '</div>';
                 } else {
-                    connectedHtml = '<div style="padding: 15px; text-align: center; color: #999; font-size: 12px;">No connected nodes</div>';
+                    connectedHtml = '<div style="padding: 15px; text-align: center; color: #999; font-size: 12px;" data-i18n="entityinfo.noConnectedNodes">No connected nodes</div>';
                 }
                 $('#connected-nodes-list').html(connectedHtml);
 
