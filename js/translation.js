@@ -114,7 +114,8 @@ const translations = {
         "entityinfo.label": "Label:",
         "entityinfo.id": "ID:",
         "entityinfo.noConnectedNodes": "No connected nodes",
-        "graph.allExpanded": "All nodes expanded"
+        "graph.allExpanded": "All nodes expanded",
+        "graph.leavesRestored": "Restored {0} leaf nodes"
     },
     "ar-AE": {
         "app.title": "مستكشف بيانات الرسم البياني",
@@ -230,7 +231,8 @@ const translations = {
         "entityinfo.label": "تسمية:",
         "entityinfo.id": "معرف:",
         "entityinfo.noConnectedNodes": "لا توجد عقد متصلة",
-        "graph.allExpanded": "تم توسيع جميع العقد"
+        "graph.allExpanded": "تم توسيع جميع العقد",
+        "graph.leavesRestored": "تم استعادة {0} عقد ورقية"
     }
 };
 

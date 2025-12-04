@@ -800,34 +800,37 @@
             return cy.nodes(':selected');
         },
 
-        hideLeaves: function () {
+        hiddenLeaves: null,
+
+        toggleLeaves: function (shouldHide) {
             if (!cy) return;
 
-            cy.batch(function () {
-                var nodes = cy.nodes();
-                var removedCount = 0;
-
-                nodes.forEach(function (node) {
-                    // Check degree (number of connected edges)
-                    // We only care about visible edges
-                    var degree = node.degree();
-
-                    // If degree is 0 (isolated) or 1 (leaf), remove it
-                    if (degree <= 1) {
-                        cy.remove(node);
-                        removedCount++;
-                    }
+            if (shouldHide) {
+                // Hide leaves
+                var leaves = cy.nodes().filter(function (ele) {
+                    return ele.degree() <= 1;
                 });
 
-                console.log('Hidden ' + removedCount + ' leaf nodes');
-                if (removedCount > 0) {
+                if (leaves.length > 0) {
+                    Graph.hiddenLeaves = leaves.remove();
+                    var count = Graph.hiddenLeaves.length;
                     Graph.updateStats();
-                    var msg = (window.i18n ? window.i18n.get('graph.leavesHidden') : 'Hidden {0} leaf nodes').replace('{0}', removedCount);
+                    var msg = (window.i18n ? window.i18n.get('graph.leavesHidden') : 'Hidden {0} leaf nodes').replace('{0}', count);
                     Graph.showStatus(msg, 'success');
                 } else {
                     Graph.showStatus(window.i18n ? window.i18n.get('graph.noLeaves') : "No leaf nodes found to hide.", 'info');
                 }
-            });
+            } else {
+                // Show leaves
+                if (Graph.hiddenLeaves) {
+                    Graph.hiddenLeaves.restore();
+                    var count = Graph.hiddenLeaves.length;
+                    Graph.hiddenLeaves = null;
+                    Graph.updateStats();
+                    var msg = (window.i18n ? window.i18n.get('graph.leavesRestored') : 'Restored {0} leaf nodes').replace('{0}', count);
+                    Graph.showStatus(msg, 'success');
+                }
+            }
         },
 
         saveAsImage: function () {
@@ -845,6 +848,7 @@
             if (cy) {
                 cy.elements().remove();
                 Graph.unexpandedNodes.clear();
+                Graph.hiddenLeaves = null;
                 Graph.updateStats();
                 console.log('Graph cleared');
             }
