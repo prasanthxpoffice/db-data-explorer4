@@ -63,7 +63,9 @@
                         style: {
                             'width': 2,
                             'line-color': '#ccc',
-                            'curve-style': 'haystack', // Faster than bezier
+                            'target-arrow-color': '#ccc',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier', // Bezier supports arrows
                             'label': 'data(label)',
                             'font-size': 8,
                             'text-rotation': 'autorotate',
