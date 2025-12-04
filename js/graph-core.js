@@ -198,6 +198,49 @@
         getSelectedNodes: function () {
             if (!Graph.cy) return [];
             return Graph.cy.nodes(':selected');
+        },
+
+        setVisibleLegendIds: function (selectedIds) {
+            Graph.visibleLegendIds = new Set(selectedIds.map(String));
+
+            if (!Graph.cy) return;
+
+            Graph.cy.batch(function () {
+                Graph.cy.nodes().forEach(function (node) {
+                    var props = node.data('properties');
+                    if (props && props.length > 0) {
+                        // Check if ANY of the aggregated NodeIDs are visible
+                        var visibleProps = props.filter(function (p) {
+                            return Graph.visibleLegendIds.has(String(p.NodeID));
+                        });
+
+                        if (visibleProps.length > 0) {
+                            node.removeClass('hidden-legend');
+
+                            // Recalculate colors for visible properties
+                            var visibleColors = visibleProps.map(function (p) { return p.NodeColor; });
+                            var uniqueColors = visibleColors.filter(function (item, pos) {
+                                return visibleColors.indexOf(item) == pos;
+                            });
+
+                            if (uniqueColors.length > 1) {
+                                // Update pie chart with only visible colors
+                                if (Graph.createPieChart) {
+                                    var newPie = Graph.createPieChart(uniqueColors);
+                                    node.data('pieImage', newPie);
+                                }
+                            } else {
+                                // Single color or no pie needed
+                                node.removeData('pieImage');
+                                node.data('color', uniqueColors[0]);
+                            }
+
+                        } else {
+                            node.addClass('hidden-legend');
+                        }
+                    }
+                });
+            });
         }
     };
 
