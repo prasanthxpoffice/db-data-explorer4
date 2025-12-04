@@ -600,8 +600,8 @@
             if (!searchNodes || searchNodes.length < 2) return;
 
             var config = window.parent.APP_CONFIG;
-            if (!config || !config.api || !config.api.nodesExpand) {
-                console.error("API config missing");
+            if (!config || !config.api || !config.api.nodesFindPath) {
+                console.error("API config missing: nodesFindPath");
                 return;
             }
 
@@ -613,16 +613,16 @@
                 };
             });
 
+            var maxDepth = parseInt($('#setting-max-depth').val()) || 4;
+
             var payload = {
                 ViewGroupID: config.viewGroupId || 1,
                 SourceNodeIdentities: sourceIdentities,
-                MaxDepth: 4,
+                MaxDepth: maxDepth,
                 Lang: window.i18n ? window.i18n.currentLang : 'en-US'
             };
 
-            // Use the same base URL structure but change endpoint
-            var expandUrl = config.api.nodesExpand.path; // e.g., /GraphDbApi/NodesExpand
-            var url = expandUrl.replace(/nodesexpand/i, 'NodesFindPath');
+            var url = config.api.nodesFindPath.path;
 
             Graph.showLoading();
 
@@ -771,6 +771,45 @@
         getSelectedNodes: function () {
             if (!cy) return [];
             return cy.nodes(':selected');
+        },
+
+        hideLeaves: function () {
+            if (!cy) return;
+
+            cy.batch(function () {
+                var nodes = cy.nodes();
+                var removedCount = 0;
+
+                nodes.forEach(function (node) {
+                    // Check degree (number of connected edges)
+                    // We only care about visible edges
+                    var degree = node.degree();
+
+                    // If degree is 0 (isolated) or 1 (leaf), remove it
+                    if (degree <= 1) {
+                        cy.remove(node);
+                        removedCount++;
+                    }
+                });
+
+                console.log('Hidden ' + removedCount + ' leaf nodes');
+                if (removedCount > 0) {
+                    Graph.updateStats();
+                } else {
+                    alert("No leaf nodes found to hide.");
+                }
+            });
+        },
+
+        saveAsImage: function () {
+            if (!cy) return;
+            var png64 = cy.png({ full: true, scale: 2, bg: 'white' });
+            var link = document.createElement('a');
+            link.download = 'graph-view-' + new Date().getTime() + '.png';
+            link.href = png64;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         },
 
         clear: function () {
