@@ -21,6 +21,8 @@
                 motionBlur: false,
                 hideEdgesOnViewport: true,
                 hideLabelsOnViewport: true,
+                boxSelectionEnabled: false, // Disable box selection for performance
+                minZoomedFontSize: 12, // Hide text when zoomed out
                 style: [
                     {
                         selector: 'node',

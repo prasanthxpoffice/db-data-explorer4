@@ -63,8 +63,8 @@
 
         var layoutConfig = {
             name: layoutName,
-            animate: true,
-            animationDuration: 500,
+            animate: false, // Disable animation for speed
+            // animationDuration: 500, // Removed
             padding: 30
         };
 
@@ -76,7 +76,7 @@
                 layoutConfig.edgeElasticity = 100;
                 layoutConfig.nestingFactor = 5;
                 layoutConfig.gravity = 80;
-                layoutConfig.numIter = 500; // Reduced from 1000 for speed
+                layoutConfig.numIter = 100; // Reduced from 500 for speed
                 layoutConfig.initialTemp = 200;
                 layoutConfig.coolingFactor = 0.95;
                 layoutConfig.minTemp = 1.0;
