@@ -44,6 +44,16 @@
       showLanguageSelector: true,
       userId: "demo-user",
     };
+
+    // Function to show node details in an alert (called from iframe)
+    window.showNodeDetails = function (nodeId, groupNodeId, nodeValueId, nodeValue) {
+      var message = "Node Details:\n\n" +
+        "Node ID (Cytoscape): " + nodeId + "\n" +
+        "Group Node ID: " + groupNodeId + "\n" +
+        "Node Value ID: " + nodeValueId + "\n" +
+        "Node Value: " + nodeValue;
+      alert(message);
+    };
   </script>
   <iframe src="index.html"></iframe>
 </body>

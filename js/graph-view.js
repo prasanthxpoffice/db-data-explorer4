@@ -127,7 +127,6 @@
                 existingPathId = id;
             }
         });
-
         if (existingPathId) {
             // Highlight existing
             Graph.togglePath(existingPathId, true);
@@ -330,6 +329,34 @@
                 }
             }
         });
+    };
+
+
+    Graph.openNodeDetailsInParent = function (nodeData) {
+        if (window.parent && window.parent.showNodeDetails) {
+            // Extract IDs
+            var nodeId = nodeData.id;
+            var groupNodeId = 'N/A';
+            var nodeValueId = 'N/A';
+            var nodeValue = nodeData.label || 'N/A';
+
+            // Try to find properties in the node data if available
+            if (Graph.cy) {
+                var cyNode = Graph.cy.getElementById(nodeId);
+                if (cyNode && cyNode.length > 0) {
+                    var props = cyNode.data('properties');
+                    if (props && props.length > 0) {
+                        groupNodeId = props[0].GroupNodeID;
+                        nodeValueId = props[0].NodeValueID;
+                    }
+                }
+            }
+
+            window.parent.showNodeDetails(nodeId, groupNodeId, nodeValueId, nodeValue);
+        } else {
+            console.warn("window.parent.showNodeDetails not found");
+            alert("Node ID: " + nodeData.id);
+        }
     };
 
 })();
