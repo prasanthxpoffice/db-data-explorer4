@@ -22,8 +22,6 @@
                         selector: 'node',
                         style: {
                             'background-color': 'data(color)',
-                            'background-image': 'data(pieImage)',
-                            'background-fit': 'cover',
                             'label': 'data(label)',
                             'width': 50,
                             'height': 50,
@@ -36,6 +34,13 @@
                             'text-wrap': 'wrap',
                             'text-max-width': 45,
                             'text-overflow-wrap': 'anywhere'
+                        }
+                    },
+                    {
+                        selector: 'node[pieImage]',
+                        style: {
+                            'background-image': 'data(pieImage)',
+                            'background-fit': 'cover'
                         }
                     },
                     {
@@ -372,87 +377,228 @@
                 return;
             }
 
+            var targetNodesMap = new Map();
             var nodesToAdd = [];
             var edgesToAdd = [];
-            var processedNodes = new Set(); // Track nodes processed in this batch to avoid duplicates
-            var processedEdges = new Set(); // Track edges processed in this batch
+
+            // Collect unique target nodes and aggregate properties
+            results.forEach(function (item) {
+                var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
+
+                if (!targetNodesMap.has(targetId)) {
+                    targetNodesMap.set(targetId, {
+                        label: item.TargetNodeValue,
+                        properties: []
+                    });
+                }
+
+                // Add target property
+                targetNodesMap.get(targetId).properties.push({
+                    NodeID: item.TargetNodeID,
+                    GroupNodeID: item.TargetGroupNodeID,
+                    NodeValueID: item.TargetNodeValueID,
+                    NodeColor: item.TargetNodeColor
+                });
+            });
 
             cy.batch(function () {
-                results.forEach(function (item) {
-                    // Process Target Node
-                    var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
-                    if (!Graph.nodeSet.has(targetId) && !processedNodes.has(targetId)) {
-                        var colors = [item.TargetNodeColor]; // Assuming single color for now from API
-                        var pieImage = null; // Optimization: Skip pie chart for single color
+                // Create/update target nodes
+                targetNodesMap.forEach(function (nodeData, targetId) {
+                    var existingNode = cy.getElementById(targetId);
 
-                        // Initial position optimization
+                    // Determine visibility based on legend
+                    var classes = '';
+                    if (Graph.visibleLegendIds) {
+                        // Check if ANY of the aggregated NodeIDs are visible
+                        var isVisible = nodeData.properties.some(function (p) {
+                            return Graph.visibleLegendIds.has(String(p.NodeID));
+                        });
+
+                        if (!isVisible) {
+                            classes = 'hidden-legend';
+                        }
+                    }
+
+                    if (existingNode.length === 0) {
+                        // Create new target node
+                        var colors = nodeData.properties.map(function (p) { return p.NodeColor; });
+                        // Filter unique colors
+                        var uniqueColors = colors.filter(function (item, pos) {
+                            return colors.indexOf(item) == pos;
+                        });
+
+                        var pieImage = Graph.createPieChart(uniqueColors);
                         var position = { x: Math.random() * 500, y: Math.random() * 500 };
+
+                        var newNodeData = {
+                            id: targetId,
+                            label: nodeData.label || 'Unknown',
+                            color: uniqueColors[0],
+                            properties: nodeData.properties,
+                            isExpanded: false
+                        };
+
+                        if (pieImage) {
+                            newNodeData.pieImage = pieImage;
+                        }
 
                         nodesToAdd.push({
                             group: 'nodes',
-                            data: {
-                                id: targetId,
-                                label: item.TargetNodeValue || 'Unknown',
-                                color: item.TargetNodeColor,
-                                pieImage: pieImage,
-                                properties: [{
-                                    NodeID: item.TargetNodeID,
-                                    GroupNodeID: item.TargetGroupNodeID,
-                                    NodeValueID: item.TargetNodeValueID,
-                                    NodeColor: item.TargetNodeColor
-                                }],
-                                isExpanded: false
-                            },
+                            classes: classes.trim(),
+                            data: newNodeData,
                             position: position
                         });
-                        processedNodes.add(targetId);
-                        Graph.nodeSet.add(targetId);
+
                         Graph.unexpandedNodes.add(targetId);
-                    }
+                        Graph.nodeSet.add(targetId);
+                    } else {
+                        // Update existing node - add new properties
+                        var existingProps = existingNode.data('properties') || [];
 
-                    // Process Source Node (if not exists)
-                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
-                    if (!Graph.nodeSet.has(sourceId) && !processedNodes.has(sourceId)) {
-                        var position = { x: Math.random() * 500, y: Math.random() * 500 };
-                        nodesToAdd.push({
-                            group: 'nodes',
-                            data: {
-                                id: sourceId,
-                                label: item.SourceNodeValue || 'Unknown',
-                                color: item.SourceNodeColor,
-                                pieImage: null,
-                                properties: [{
-                                    NodeID: item.SourceNodeID,
-                                    GroupNodeID: item.SourceGroupNodeID,
-                                    NodeValueID: item.SourceNodeValueID,
-                                    NodeColor: item.SourceNodeColor
-                                }],
-                                isExpanded: false
-                            },
-                            position: position
-                        });
-                        processedNodes.add(sourceId);
-                        Graph.nodeSet.add(sourceId);
-                        Graph.unexpandedNodes.add(sourceId);
-                    }
-
-                    // Process Edge
-                    var edgeId = 'e' + item.RelationDataID;
-                    var pairKey = [sourceId, targetId].sort().join('|');
-
-                    if (!Graph.edgeSet.has(pairKey) && !processedEdges.has(pairKey)) {
-                        edgesToAdd.push({
-                            group: 'edges',
-                            data: {
-                                id: edgeId,
-                                source: sourceId,
-                                target: targetId,
-                                label: item.Relation || ''
+                        // Add only new properties (avoid duplicates)
+                        nodeData.properties.forEach(function (newProp) {
+                            var exists = existingProps.some(function (ep) {
+                                return ep.NodeID === newProp.NodeID;
+                            });
+                            if (!exists) {
+                                existingProps.push(newProp);
                             }
                         });
-                        processedEdges.add(pairKey);
-                        Graph.edgeSet.add(pairKey);
+
+                        existingNode.data('properties', existingProps);
+
+                        // Update pie chart
+                        var colors = existingProps.map(function (p) { return p.NodeColor; });
+                        var uniqueColors = colors.filter(function (item, pos) {
+                            return colors.indexOf(item) == pos;
+                        });
+
+                        var pieImage = Graph.createPieChart(uniqueColors);
+                        if (pieImage) {
+                            existingNode.data('pieImage', pieImage);
+                        }
+                        existingNode.data('color', uniqueColors[0]);
+
+                        // Update visibility if needed
+                        if (Graph.visibleLegendIds) {
+                            var isVisible = existingProps.some(function (p) {
+                                return Graph.visibleLegendIds.has(String(p.NodeID));
+                            });
+                            if (isVisible) {
+                                existingNode.removeClass('hidden-legend');
+                            }
+                        }
                     }
+                });
+
+                // Update source node properties
+                results.forEach(function (item) {
+                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
+                    var sourceNode = cy.getElementById(sourceId);
+
+                    if (sourceNode.length > 0) {
+                        var sourceProps = sourceNode.data('properties') || [];
+
+                        // Check if property already exists
+                        var exists = sourceProps.some(function (p) {
+                            return p.NodeID === item.SourceNodeID;
+                        });
+
+                        if (!exists) {
+                            // Add source property
+                            sourceProps.push({
+                                NodeID: item.SourceNodeID,
+                                GroupNodeID: item.SourceGroupNodeID,
+                                NodeValueID: item.SourceNodeValueID,
+                                NodeColor: item.SourceNodeColor
+                            });
+
+                            sourceNode.data('properties', sourceProps);
+
+                            // Update pie chart
+                            var colors = sourceProps.map(function (p) { return p.NodeColor; });
+                            var uniqueColors = colors.filter(function (item, pos) {
+                                return colors.indexOf(item) == pos;
+                            });
+
+                            var pieImage = Graph.createPieChart(uniqueColors);
+                            if (pieImage) {
+                                sourceNode.data('pieImage', pieImage);
+                            }
+                            sourceNode.data('color', uniqueColors[0]);
+                        }
+                    } else {
+                        // Source node might be new (if not found in search or previous expansion)
+                        if (!Graph.nodeSet.has(sourceId)) {
+                            var colors = [item.SourceNodeColor];
+                            var position = { x: Math.random() * 500, y: Math.random() * 500 };
+
+                            var classes = '';
+                            if (Graph.visibleLegendIds && !Graph.visibleLegendIds.has(String(item.SourceNodeID))) {
+                                classes = 'hidden-legend';
+                            }
+
+                            nodesToAdd.push({
+                                group: 'nodes',
+                                classes: classes,
+                                data: {
+                                    id: sourceId,
+                                    label: item.SourceNodeValue || 'Unknown',
+                                    color: item.SourceNodeColor,
+                                    properties: [{
+                                        NodeID: item.SourceNodeID,
+                                        GroupNodeID: item.SourceGroupNodeID,
+                                        NodeValueID: item.SourceNodeValueID,
+                                        NodeColor: item.SourceNodeColor
+                                    }],
+                                    isExpanded: false
+                                },
+                                position: position
+                            });
+                            Graph.nodeSet.add(sourceId);
+                            Graph.unexpandedNodes.add(sourceId);
+                        }
+                    }
+                });
+
+                // Create edges
+                var processedPairs = new Set();
+
+                results.forEach(function (item) {
+                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
+                    var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
+                    var edgeId = 'e' + item.RelationDataID;
+
+                    // Create a unique key for the pair (sorted to be direction-agnostic)
+                    var pairKey = [sourceId, targetId].sort().join('|');
+
+                    // 1. Check if we already processed this pair in this batch
+                    if (processedPairs.has(pairKey)) return;
+
+                    // 2. Check if edge already exists in graph (by ID)
+                    if (cy.getElementById(edgeId).length > 0) return;
+
+                    // 3. Check if ANY edge exists between these two nodes in the graph
+                    var sourceNode = cy.getElementById(sourceId);
+                    var targetNode = cy.getElementById(targetId);
+
+                    if (sourceNode.length > 0 && targetNode.length > 0) {
+                        // edgesWith returns edges in either direction
+                        if (sourceNode.edgesWith(targetNode).length > 0) return;
+                    }
+
+                    edgesToAdd.push({
+                        group: 'edges',
+                        data: {
+                            id: edgeId,
+                            source: sourceId,
+                            target: targetId,
+                            label: item.Relation || ''
+                        }
+                    });
+
+                    processedPairs.add(pairKey);
+                    Graph.edgeSet.add(pairKey);
                 });
 
                 // Add new elements
