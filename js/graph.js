@@ -1,154 +1,45 @@
+// Fresh start: graph.js - Identity-based Graph Visualization with Property Arrays
+// Using GroupNodeID + NodeValueID as the unique identifier for nodes
+
 (function () {
+    'use strict';
+
     var cy = null;
-
-    // Optimization: String Interner (Symbol Table)
-    var Interner = {
-        map: new Map(), // String -> Int
-        pool: [],       // Int -> String
-        get: function (str) {
-            if (str === null || str === undefined) return 0;
-            var s = String(str).trim();
-            if (s === "") return 0;
-
-            var id = Interner.map.get(s);
-            if (id !== undefined) return id;
-
-            id = Interner.pool.length + 1;
-            Interner.map.set(s, id);
-            Interner.pool.push(s);
-            return id;
-        },
-        resolve: function (id) {
-            if (!id || id <= 0) return null;
-            return Interner.pool[id - 1];
-        },
-        clear: function () {
-            Interner.map = new Map();
-            Interner.pool = [];
-        }
-    };
-
-    // Optimization: Bitwise Flags
-    var FLAGS = {
-        EXPANDED: 1,
-        HAS_PIE: 2
-    };
-
-    // Optimization: Shape Stabilization (Factory)
-    // Ensures all Node Data objects have the exact same Hidden Class
-    function createNodeData(id, label, color, group, value, date, allIds, colors, expandedIds) {
-        return {
-            id: id,                 // String (for Cytoscape)
-            label: label,           // String
-            color: color,           // String
-            groupNodeId: group,     // Int
-            nodeValueId: value,     // Int
-            nodeValueDate: date,    // String
-            allIds: allIds,         // Array<Int>
-            colors: colors,         // Array<String>
-            expandedIds: expandedIds, // Array<Int>
-            pieImage: null,         // String (Always present for stability)
-            flags: 0,               // Int (Bitmask)
-            legendId: 0             // Int (For filtering)
-        };
-    }
+    var DEFAULT_NODE_COLOR = '#4A90E2';
 
     var Graph = {
-        nodeLookup: new Map(), // Nested Map: GroupInt -> Map<ValueInt, NodeInt>
-        internalIdLookup: new Map(), // Map: NodeDataInt (Internal) -> NodeInt (Visual)
-        idSets: new Map(), // Map: NodeInt -> Set<InternalInt>
-        svgCache: {},   // Map: ColorKey -> SVG Data URI
-        adjacencyList: new Map(), // Map: SourceInt -> Set<TargetInt>
-        expandableNodeIds: new Set(), // Set: NodeInt
-        isExpanding: false, // Mutex
-
-        // --- Status Bar ---
-        showStatus: function (message, type) {
-            type = type || 'info';
-            var $notification = $('#status-notification');
-            $notification.text(message)
-                .removeClass('error success info')
-                .addClass(type)
-                .addClass('show');
-
-            // Clear previous timeout if exists
-            if (this.statusTimeout) clearTimeout(this.statusTimeout);
-
-            // Auto-hide after 3 seconds
-            this.statusTimeout = setTimeout(function () {
-                $notification.removeClass('show');
-            }, 3000);
-        },
-
-        updateStats: function () {
-            if (!cy) return;
-            $('#stat-nodes').text(cy.nodes().length);
-            $('#stat-edges').text(cy.edges().length);
-            $('#stat-pending').text(Graph.expandableNodeIds.size);
-        },
+        unexpandedNodes: new Set(),
+        isExpanding: false,
+        autoExpand: false,
 
         init: function (containerId) {
-            Graph.clear();
-
             cy = cytoscape({
                 container: $(containerId),
-                textureOnViewport: true,
-                hideEdgesOnViewport: true,
-                pixelRatio: 1,
                 style: [
                     {
                         selector: 'node',
                         style: {
                             'background-color': 'data(color)',
-                            'label': 'data(label)',
-                            'width': 'label',
-                            'height': 'label',
-                            'padding': '10px',
-                            'shape': 'round-rectangle',
-                            'font-size': 12,
-                            'color': '#fff',
-                            'text-valign': 'center',
-                            'text-halign': 'center',
-                            'min-zoomed-font-size': 8
-                        }
-                    },
-                    {
-                        selector: 'node:selected',
-                        style: {
-                            'text-wrap': 'wrap',
-                            'text-max-width': 100,
-                            'text-outline-width': 2,
-                            'text-outline-color': 'data(color)',
-                            'z-index': 9999
-                        }
-                    },
-                    {
-                        selector: 'node.has-pie',
-                        style: {
                             'background-image': 'data(pieImage)',
                             'background-fit': 'cover',
-                            'background-opacity': 0
+                            'label': 'data(label)',
+                            'width': 50,
+                            'height': 50,
+                            'font-size': 10,
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'color': '#000',
+                            'text-outline-width': 2,
+                            'text-outline-color': '#fff'
                         }
                     },
                     {
                         selector: 'node.expanded',
                         style: {
-                            'border-color': '#333',
-                            'border-width': 2
+                            'border-width': 3,
+                            'border-color': '#28a745'
                         }
                     },
-                    {
-                        selector: 'node.hidden',
-                        style: {
-                            'display': 'none'
-                        }
-                    },
-                    {
-                        style: {
-                            'display': 'none'
-                        }
-                    },
-
                     {
                         selector: 'edge',
                         style: {
@@ -158,30 +49,8 @@
                             'target-arrow-shape': 'triangle',
                             'curve-style': 'bezier',
                             'label': 'data(label)',
-                            'font-size': 10,
-                            'text-rotation': 'autorotate',
-                            'text-background-opacity': 1,
-                            'text-background-color': '#fff',
-                            'text-background-shape': 'round-rectangle',
-                            'min-zoomed-font-size': 8
-                        }
-                    },
-                    {
-                        selector: 'node.path-highlight',
-                        style: {
-                            'border-color': 'data(pathColor)',
-                            'border-width': 4,
-                            'z-index': 9999
-                        }
-                    },
-                    {
-                        selector: 'edge.path-highlight',
-                        style: {
-                            'width': 4,
-                            'line-color': 'data(pathColor)',
-                            'target-arrow-color': 'data(pathColor)',
-                            'source-arrow-color': 'data(pathColor)',
-                            'z-index': 9999
+                            'font-size': 8,
+                            'text-rotation': 'autorotate'
                         }
                     }
                 ],
@@ -191,1015 +60,512 @@
                 }
             });
 
-            cy.on('dbltap', 'node', function (evt) {
-                var node = evt.target;
-                Graph.expandNodes([node]);
-            });
-
-            // Single-click handler for Entity Info
-            cy.on('tap', 'node', function (evt) {
-                var node = evt.target;
-                var nodeData = {
-                    id: node.id(),
-                    label: node.data('label'),
-                    type: node.data('groupName') || node.data('type') || 'Unknown',
-                    connectedNodes: []
-                };
-
-                // Get connected edges and nodes
-                var connectedEdges = node.connectedEdges();
-                connectedEdges.forEach(function (edge) {
-                    var targetNode = edge.target().id() === node.id() ? edge.source() : edge.target();
-                    nodeData.connectedNodes.push({
-                        nodeId: targetNode.id(),
-                        nodeLabel: targetNode.data('label'),
-                        relationship: edge.data('label') || 'Connected'
-                    });
-                });
-
-                // Trigger custom event for Entity Info panel
-                $(document).trigger('nodeSelected', [nodeData]);
-            });
-
-            // Layout Switcher
-            // Layout Switcher - Use event delegation for dynamically loaded content
-            $(document).on('change', '#setting-layout', function () {
-                var layoutName = $(this).val();
-                Graph.changeLayout(layoutName);
-            });
-
-
+            console.log('Graph initialized');
         },
 
-        normalizeId: function (id) {
-            return id;
-        },
-
-        generatePieSVG: function (colors) {
+        // Create pie chart SVG for multi-color nodes
+        createPieChart: function (colors) {
             if (!colors || colors.length === 0) return null;
-            if (colors.length === 1) return null;
-
-            if (Object.keys(Graph.svgCache).length > 1000) {
-                Graph.svgCache = {};
-            }
-
-            var cacheKey = colors.slice().sort().join(',');
-            if (Graph.svgCache[cacheKey]) {
-                return Graph.svgCache[cacheKey];
-            }
+            if (colors.length === 1) return null; // Single color, no pie needed
 
             var size = 100;
-            var center = size / 2;
-            var radius = size / 2;
+            var radius = 50;
+            var cx = 50;
+            var cy = 50;
+
             var total = colors.length;
-            var sliceAngle = (2 * Math.PI) / total;
+            var anglePerSlice = 360 / total;
+            var currentAngle = 0;
 
             var paths = [];
-            var startAngle = 0;
-
             colors.forEach(function (color) {
-                var endAngle = startAngle + sliceAngle;
-                var x1 = center + radius * Math.cos(startAngle);
-                var y1 = center + radius * Math.sin(startAngle);
-                var x2 = center + radius * Math.cos(endAngle);
-                var y2 = center + radius * Math.sin(endAngle);
+                var startAngle = currentAngle;
+                var endAngle = currentAngle + anglePerSlice;
 
-                var d = [
-                    "M", center, center,
-                    "L", x1, y1,
-                    "A", radius, radius, 0, 0, 1, x2, y2,
-                    "Z"
-                ].join(" ");
+                var x1 = cx + radius * Math.cos((startAngle - 90) * Math.PI / 180);
+                var y1 = cy + radius * Math.sin((startAngle - 90) * Math.PI / 180);
+                var x2 = cx + radius * Math.cos((endAngle - 90) * Math.PI / 180);
+                var y2 = cy + radius * Math.sin((endAngle - 90) * Math.PI / 180);
 
-                paths.push('<path d="' + d + '" fill="' + color + '" />');
-                startAngle = endAngle;
+                var largeArc = anglePerSlice > 180 ? 1 : 0;
+
+                var pathData = [
+                    'M', cx, cy,
+                    'L', x1, y1,
+                    'A', radius, radius, 0, largeArc, 1, x2, y2,
+                    'Z'
+                ].join(' ');
+
+                paths.push('<path d="' + pathData + '" fill="' + color + '"/>');
+                currentAngle = endAngle;
             });
 
-            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
+            var svg = '<svg width="' + size + '" height="' + size + '" xmlns="http://www.w3.org/2000/svg">' +
                 paths.join('') +
                 '</svg>';
 
-            var dataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-            Graph.svgCache[cacheKey] = dataUri;
-            return dataUri;
+            return 'data:image/svg+xml;base64,' + btoa(svg);
         },
 
-        updatePieData: function (nodeData) {
-            var colors = nodeData.colors || [];
-            if (colors.length > 1) {
-                var svgDataUri = Graph.generatePieSVG(colors);
-                nodeData.pieImage = svgDataUri;
-                nodeData.color = 'transparent';
-                nodeData.flags |= FLAGS.HAS_PIE; // Set Flag
-            } else {
-                nodeData.pieImage = null;
-                if (colors.length === 1) nodeData.color = colors[0];
-                nodeData.flags &= ~FLAGS.HAS_PIE; // Clear Flag
-            }
-        },
-        runLayout: function (newElements) {
-            if (!cy) return;
-            try {
-                // Safety: Filter out elements that might have been removed or are invalid
-                var validElements = newElements.filter(function (ele) {
-                    return ele.inside();
-                });
+        // Create search nodes directly from search list
+        createSearchNodes: function (searchNodes) {
+            if (!cy || !searchNodes || searchNodes.length === 0) return;
 
-                if (validElements.length === 0) return;
+            var nodesToAdd = [];
 
-                var totalNodes = cy.nodes().length;
-                var newNodes = validElements.nodes().length;
+            searchNodes.forEach(function (node) {
+                var nodeId = node.GroupNodeID + '|' + node.NodeValueID;
 
-                // Heuristic: If we are adding the first batch of nodes, or the graph is very small, run full layout.
-                var isFirstLoad = (totalNodes === newNodes) || (totalNodes < 10);
-
-                var shouldAnimate = true;
-                if (validElements.length > 100 || Graph.autoExpand) {
-                    shouldAnimate = false;
+                // Check if node already exists
+                if (cy.getElementById(nodeId).length > 0) {
+                    return;
                 }
 
-                var layoutName = $('#setting-layout').val() || 'cose';
-
-                var layoutConfig = {
-                    name: layoutName,
-                    animate: shouldAnimate,
-                    randomize: false,
-                    fit: false,
-                    padding: 50
+                // Create initial property object
+                var initialProperty = {
+                    NodeID: node.NodeID,
+                    GroupNodeID: node.GroupNodeID,
+                    NodeValueID: node.NodeValueID,
+                    NodeColor: node.NodeColor
                 };
 
-                // Specific configs for different layouts
-                if (layoutName === 'cose') {
-                    layoutConfig.idealEdgeLength = 100;
-                    layoutConfig.nodeRepulsion = 400000;
-                    layoutConfig.numIter = 1000;
-                    layoutConfig.componentSpacing = 40;
-                    layoutConfig.nodeDimensionsIncludeLabels = true;
-                } else if (layoutName === 'concentric') {
-                    layoutConfig.minNodeSpacing = 50;
-                    layoutConfig.equidistant = false;
-                    layoutConfig.avoidOverlap = true;
-                } else if (layoutName === 'breadthfirst') {
-                    layoutConfig.directed = true;
-                    layoutConfig.spacingFactor = 1.75;
-                }
-
-                if (isFirstLoad) {
-                    layoutConfig.randomize = true;
-                    layoutConfig.fit = true;
-                    cy.layout(layoutConfig).run();
-                } else {
-                    // Incremental layout: Include neighbors to settle new nodes relative to existing ones
-                    var layoutEles = validElements.union(validElements.neighborhood());
-
-                    // Double check validity of layout elements and positions
-                    var validLayoutEles = layoutEles.filter(function (ele) {
-                        if (!ele.inside()) return false;
-                        if (ele.isNode()) {
-                            var pos = ele.position();
-                            if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') {
-                                // Fix invalid position
-                                ele.position({ x: 0, y: 0 });
-                            }
-                            return true;
-                        }
-                        return false; // Edges handled below
-                    });
-
-                    // Strict Edge Check: Ensure both source and target are in the validLayoutEles set
-                    var validEdges = layoutEles.edges().filter(function (edge) {
-                        if (!edge.inside()) return false;
-                        var source = edge.source();
-                        var target = edge.target();
-                        // Check if source and target are valid AND included in our layout set
-                        var sourceValid = validLayoutEles.has(source);
-                        var targetValid = validLayoutEles.has(target);
-                        return sourceValid && targetValid;
-                    });
-
-                    // Combine valid nodes and valid edges
-                    var finalLayoutEles = validLayoutEles.union(validEdges);
-
-                    if (finalLayoutEles.length > 0) {
-                        // Use Core Layout with 'eles' option for better stability
-                        layoutConfig.eles = finalLayoutEles;
-                        var layoutInstance = cy.layout(layoutConfig);
-
-                        layoutInstance.one('layoutstop', function () {
-                            // Smart Fit: Only fit if NOT auto-expanding (we fit at the end)
-                            if (!Graph.autoExpand) {
-                                cy.animate({
-                                    fit: {
-                                        eles: cy.elements(),
-                                        padding: 50
-                                    },
-                                    duration: 500,
-                                    easing: 'ease-in-out-cubic'
-                                });
-                            }
-                        });
-                        layoutInstance.run();
-                    }
-                }
-            } catch (e) {
-                console.error("Layout failed:", e);
-            }
-        },
-
-        changeLayout: function (name) {
-            if (!cy) return;
-            var layoutConfig = {
-                name: name,
-                animate: true,
-                animationDuration: 500,
-                fit: true,
-                padding: 50
-            };
-
-            if (name === 'cose') {
-                layoutConfig.idealEdgeLength = 100;
-                layoutConfig.nodeRepulsion = 400000;
-                layoutConfig.numIter = 1000;
-                layoutConfig.componentSpacing = 40;
-                layoutConfig.nodeDimensionsIncludeLabels = true;
-            } else if (name === 'concentric') {
-                layoutConfig.minNodeSpacing = 50;
-                layoutConfig.equidistant = false;
-                layoutConfig.avoidOverlap = true;
-            } else if (name === 'breadthfirst') {
-                layoutConfig.directed = true;
-                layoutConfig.spacingFactor = 1.75;
-            }
-
-            cy.layout(layoutConfig).run();
-        },
-
-        addNodes: function (nodesData) {
-            if (!cy) return;
-
-            var chunkSize = 500;
-            var index = 0;
-            var total = nodesData.length;
-            var allNewEles = cy.collection();
-
-            function processChunk() {
-                var chunkEnd = Math.min(index + chunkSize, total);
-                var nodesToAdd = [];
-                var addedIds = new Set();
-
-                cy.batch(function () {
-                    for (var i = index; i < chunkEnd; i++) {
-                        var node = nodesData[i];
-
-                        var nodeIdInt = Interner.get(node.NodeDataID);
-                        if (!nodeIdInt) continue;
-
-                        var groupIdInt = Interner.get(node.GroupNodeID);
-                        var valueIdInt = Interner.get(node.NodeValueID);
-
-                        var groupMap = Graph.nodeLookup.get(groupIdInt);
-                        var existingNodeIdInt = groupMap ? groupMap.get(valueIdInt) : undefined;
-
-                        if (existingNodeIdInt) {
-                            // MERGE
-                            var existingNodeIdStr = Interner.resolve(existingNodeIdInt);
-                            var existingNode = cy.getElementById(existingNodeIdStr);
-
-                            if (existingNode.length > 0) {
-                                var data = existingNode.data();
-                                var idSet = Graph.idSets.get(existingNodeIdInt);
-
-                                if (!idSet.has(nodeIdInt)) {
-                                    data.allIds.push(nodeIdInt);
-                                    idSet.add(nodeIdInt);
-
-                                    data.colors.push(node.ColumnColor || '#666');
-                                    Graph.updatePieData(data);
-
-                                    // Clear Expanded Flag since we added new data
-                                    data.flags &= ~FLAGS.EXPANDED;
-                                    existingNode.removeClass('expanded');
-
-                                    existingNode.data(data);
-
-                                    // Check Flag for Class
-                                    if (data.flags & FLAGS.HAS_PIE) existingNode.addClass('has-pie');
-                                    else existingNode.removeClass('has-pie');
-
-                                    Graph.expandableNodeIds.add(existingNodeIdInt);
-                                    Graph.internalIdLookup.set(nodeIdInt, existingNodeIdInt);
-                                }
-                            }
-                        } else {
-                            // CREATE
-                            if (!addedIds.has(nodeIdInt)) {
-                                var nodeIdStr = Interner.resolve(nodeIdInt);
-
-                                if (cy.getElementById(nodeIdStr).length === 0) {
-                                    // Optimization: Use Factory
-                                    var newNodeData = createNodeData(
-                                        nodeIdStr,
-                                        node.NodeValue,
-                                        node.ColumnColor || '#666',
-                                        groupIdInt,
-                                        valueIdInt,
-                                        node.NodeValueDate,
-                                        [nodeIdInt],
-                                        [node.ColumnColor || '#666'],
-                                        []
-                                    );
-
-                                    // Set Legend ID (NodeID from DB)
-                                    newNodeData.legendId = parseInt(node.NodeID) || 0;
-
-                                    Graph.updatePieData(newNodeData);
-
-                                    nodesToAdd.push({
-                                        group: 'nodes',
-                                        data: newNodeData,
-                                        classes: (newNodeData.flags & FLAGS.HAS_PIE) ? 'has-pie' : ''
-                                    });
-                                    addedIds.add(nodeIdInt);
-
-                                    if (!Graph.nodeLookup.has(groupIdInt)) {
-                                        Graph.nodeLookup.set(groupIdInt, new Map());
-                                    }
-                                    Graph.nodeLookup.get(groupIdInt).set(valueIdInt, nodeIdInt);
-
-                                    Graph.internalIdLookup.set(nodeIdInt, nodeIdInt);
-                                    Graph.idSets.set(nodeIdInt, new Set([nodeIdInt]));
-                                    Graph.expandableNodeIds.add(nodeIdInt);
-                                }
-                            }
-                        }
+                nodesToAdd.push({
+                    group: 'nodes',
+                    data: {
+                        id: nodeId,
+                        label: node.NodeValue || 'Unknown',
+                        color: node.NodeColor,
+                        properties: [initialProperty], // Array of property objects
+                        isExpanded: false
                     }
                 });
 
-                if (nodesToAdd.length > 0) {
-                    var chunkEles = cy.add(nodesToAdd);
-                    allNewEles = allNewEles.union(chunkEles);
+                Graph.unexpandedNodes.add(nodeId);
+            });
+
+            if (nodesToAdd.length > 0) {
+                cy.add(nodesToAdd);
+
+                cy.layout({
+                    name: 'cose',
+                    animate: true,
+                    animationDuration: 500
+                }).run();
+
+                Graph.updateStats();
+                console.log('Created ' + nodesToAdd.length + ' search nodes');
+
+                // Trigger auto-expand if enabled
+                if (Graph.autoExpand) {
+                    setTimeout(function () {
+                        Graph.expandNextBatch();
+                    }, 500);
                 }
+            }
+        },
 
-                index += chunkSize;
+        // Expand nodes
+        expandNodes: function (nodeIdentities) {
+            if (!cy || Graph.isExpanding) return;
 
-                if (index < total) {
-                    requestAnimationFrame(processChunk);
-                } else {
-                    if (allNewEles.length > 0) {
-                        Graph.runLayout(allNewEles);
-                    }
-                    Graph.updateStats();
+            Graph.isExpanding = true;
+
+            var config = window.parent.APP_CONFIG;
+            if (!config) {
+                console.error('APP_CONFIG not found');
+                Graph.isExpanding = false;
+                return;
+            }
+
+            var lang = window.i18n ? window.i18n.currentLang : 'en-US';
+
+            // Get ViewGroupID from global state
+            var viewGroupId = window.currentViewGroupId || 1;
+
+            // Get MaxNeighbors from settings
+            var maxNeighbors = Graph.maxNeighbors || parseInt($('#setting-max-neighbors').val()) || 100;
+
+            // Get filter nodes from legends grid (includes user-modified dates)
+            var filterNodes = [];
+            var $legendsGrid = $('#legends-grid');
+            if ($legendsGrid.length > 0) {
+                var selectedRowIds = $legendsGrid.jqGrid('getGridParam', 'selarrrow');
+                if (selectedRowIds && selectedRowIds.length > 0) {
+                    selectedRowIds.forEach(function (rowId) {
+                        var $row = $('#' + rowId);
+                        var nodeId = parseInt(rowId);
+
+                        // Check if date filter is enabled
+                        var $dateSwitch = $row.find('.switch input');
+                        var isDateFilterEnabled = $dateSwitch.is(':checked');
+
+                        var fromDate = new Date('1900-01-01');
+                        var toDate = new Date('2099-12-31');
+
+                        if (isDateFilterEnabled) {
+                            var $fromInput = $row.find('.from-date');
+                            var $toInput = $row.find('.to-date');
+
+                            if ($fromInput.val()) {
+                                fromDate = $fromInput.datepicker('getDate') || fromDate;
+                            }
+                            if ($toInput.val()) {
+                                toDate = $toInput.datepicker('getDate') || toDate;
+                            }
+                        }
+
+                        filterNodes.push({
+                            NodeID: nodeId,
+                            FromDate: fromDate,
+                            ToDate: toDate
+                        });
+                    });
                 }
             }
 
-            processChunk();
+            console.log('Expanding nodes:', nodeIdentities);
+            console.log('ViewGroupID:', viewGroupId, 'MaxNeighbors:', maxNeighbors);
+            console.log('Filter nodes from legends grid:', filterNodes.length, 'nodes');
+
+            var payload = {
+                ViewGroupID: viewGroupId,
+                SourceNodeIdentities: nodeIdentities,
+                FilterNodes: filterNodes,
+                MaxNeighbors: maxNeighbors,
+                Lang: lang
+            };
+
+            console.log('=== PAYLOAD BEING SENT ===');
+            console.log('Full payload:', JSON.stringify(payload, null, 2));
+            console.log('==========================');
+
+            $.ajax({
+                url: config.api.nodesExpand.path,
+                method: config.api.nodesExpand.method,
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function (results) {
+                    console.log('=== EXPANSION RESULTS DEBUG ===');
+                    console.log('Results:', results);
+                    console.log('Type:', typeof results);
+                    console.log('Is Array:', Array.isArray(results));
+                    console.log('Length:', results ? results.length : 'null/undefined');
+                    if (results && results.length > 0) {
+                        console.log('First item:', results[0]);
+                        console.log('First item keys:', Object.keys(results[0]));
+                    }
+                    console.log('===============================');
+
+                    Graph.processExpansionResults(results, nodeIdentities);
+                    Graph.isExpanding = false;
+
+                    if (Graph.autoExpand && Graph.unexpandedNodes.size > 0) {
+                        setTimeout(function () {
+                            Graph.expandNextBatch();
+                        }, 500);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error('Error expanding nodes:', error, xhr.responseText);
+                    Graph.isExpanding = false;
+                }
+            });
         },
 
-        addExpansionResults: function (results) {
-            if (!cy) return;
+        // Process expansion results
+        processExpansionResults: function (results, sourceIdentities) {
+            if (!results || results.length === 0) {
+                sourceIdentities.forEach(function (identity) {
+                    var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
+                    var node = cy.getElementById(nodeId);
+                    if (node.length > 0) {
+                        node.data('isExpanded', true);
+                        node.addClass('expanded');
+                        Graph.unexpandedNodes.delete(nodeId);
+                    }
+                });
+                Graph.updateStats();
+                return;
+            }
 
+            var targetNodesMap = new Map();
             var nodesToAdd = [];
             var edgesToAdd = [];
 
-            var uniqueTargetsMap = new Map();
-
+            // Collect unique target nodes
             results.forEach(function (item) {
-                if (!item.TargetNodeDataID && !item.TargetNodeID) return;
+                var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
 
-                var groupIdInt = Interner.get(item.TargetGroupNodeID);
-                var valueIdInt = Interner.get(item.TargetNodeValueID);
+                if (!targetNodesMap.has(targetId)) {
+                    targetNodesMap.set(targetId, {
+                        label: item.TargetNodeValue,
+                        properties: []
+                    });
+                }
 
-                if (!uniqueTargetsMap.has(groupIdInt)) {
-                    uniqueTargetsMap.set(groupIdInt, new Map());
-                }
-                var groupMap = uniqueTargetsMap.get(groupIdInt);
-                if (!groupMap.has(valueIdInt)) {
-                    groupMap.set(valueIdInt, item);
-                }
+                // Add target property
+                targetNodesMap.get(targetId).properties.push({
+                    NodeID: item.TargetNodeID,
+                    GroupNodeID: item.TargetGroupNodeID,
+                    NodeValueID: item.TargetNodeValueID,
+                    NodeColor: item.TargetNodeColor
+                });
             });
 
             cy.batch(function () {
-                // --- Pass 2: Process Unique Nodes ---
-                uniqueTargetsMap.forEach(function (groupMap, groupIdInt) {
-                    groupMap.forEach(function (item, valueIdInt) {
-                        var targetNodeID = item.TargetNodeDataID || item.TargetNodeID;
-                        var targetIdInt = Interner.get(targetNodeID);
+                // Create/update target nodes
+                targetNodesMap.forEach(function (nodeData, targetId) {
+                    var existingNode = cy.getElementById(targetId);
 
-                        var lookupGroupMap = Graph.nodeLookup.get(groupIdInt);
-                        var existingNodeIdInt = lookupGroupMap ? lookupGroupMap.get(valueIdInt) : undefined;
+                    if (existingNode.length === 0) {
+                        // Create new target node
+                        var colors = nodeData.properties.map(p => p.NodeColor);
+                        var pieImage = Graph.createPieChart(colors);
 
-                        if (existingNodeIdInt) {
-                            // Merge
-                            var existingNodeIdStr = Interner.resolve(existingNodeIdInt);
-                            var existingNode = cy.getElementById(existingNodeIdStr);
-
-                            if (existingNode.length > 0) {
-                                var data = existingNode.data();
-                                var idSet = Graph.idSets.get(existingNodeIdInt);
-
-                                if (!idSet.has(targetIdInt)) {
-                                    data.allIds.push(targetIdInt);
-                                    idSet.add(targetIdInt);
-
-                                    data.colors.push(item.TargetNodeColor || '#666');
-                                    Graph.updatePieData(data);
-
-                                    // Clear Expanded Flag since we added new data
-                                    data.flags &= ~FLAGS.EXPANDED;
-                                    existingNode.removeClass('expanded');
-
-                                    existingNode.data(data);
-
-                                    if (data.flags & FLAGS.HAS_PIE) existingNode.addClass('has-pie');
-                                    else existingNode.removeClass('has-pie');
-
-                                    Graph.expandableNodeIds.add(existingNodeIdInt);
-                                    Graph.internalIdLookup.set(targetIdInt, existingNodeIdInt);
-                                }
-                            }
-                        } else {
-                            // Create
-                            var targetIdStr = Interner.resolve(targetIdInt);
-
-                            // Optimization: Use Factory
-                            var newNodeData = createNodeData(
-                                targetIdStr,
-                                item.TargetNodeValue,
-                                item.TargetNodeColor || '#666',
-                                groupIdInt,
-                                valueIdInt,
-                                item.TargetNodeValueDate,
-                                [targetIdInt],
-                                [item.TargetNodeColor || '#666'],
-                                []
-                            );
-
-                            // Set Legend ID (TargetNodeID from DB)
-                            newNodeData.legendId = parseInt(item.TargetNodeID) || 0;
-
-                            Graph.updatePieData(newNodeData);
-
-                            Graph.updatePieData(newNodeData);
-
-                            // Initial Position Logic: Place near source if possible
-                            var sourceNodeID = item.SourceNodeDataID || item.SourceNodeID;
-                            var initialPos = { x: 0, y: 0 };
-                            if (sourceNodeID) {
-                                var sourceIdInt = Interner.get(sourceNodeID);
-                                var finalSourceIdInt = Graph.internalIdLookup.get(sourceIdInt);
-                                if (finalSourceIdInt) {
-                                    var sourceNode = cy.getElementById(Interner.resolve(finalSourceIdInt));
-                                    if (sourceNode.length > 0) {
-                                        var pos = sourceNode.position();
-                                        // Randomize slightly to avoid stacking
-                                        initialPos = {
-                                            x: pos.x + (Math.random() * 100 - 50),
-                                            y: pos.y + (Math.random() * 100 - 50)
-                                        };
-                                    }
-                                }
-                            }
-
-                            nodesToAdd.push({
-                                group: 'nodes',
-                                data: newNodeData,
-                                position: initialPos,
-                                classes: (newNodeData.flags & FLAGS.HAS_PIE) ? 'has-pie' : ''
-                            });
-
-                            if (!Graph.nodeLookup.has(groupIdInt)) {
-                                Graph.nodeLookup.set(groupIdInt, new Map());
-                            }
-                            Graph.nodeLookup.get(groupIdInt).set(valueIdInt, targetIdInt);
-
-                            Graph.internalIdLookup.set(targetIdInt, targetIdInt);
-                            Graph.idSets.set(targetIdInt, new Set([targetIdInt]));
-                            Graph.expandableNodeIds.add(targetIdInt);
-                        }
-                    });
-                });
-
-                // --- Pass 3: Process Edges ---
-                results.forEach(function (item) {
-                    var sourceNodeID = item.SourceNodeDataID || item.SourceNodeID;
-                    var targetNodeID = item.TargetNodeDataID || item.TargetNodeID;
-                    var edgeID = item.RelationDataID || item.EdgeID;
-                    var edgeLabel = item.Relation || item.EdgeLabel;
-
-                    if (!sourceNodeID || !targetNodeID || !edgeID) return;
-
-                    var sourceIdInt = Interner.get(sourceNodeID);
-                    var targetIdInt = Interner.get(targetNodeID);
-                    var edgeIdStr = String(edgeID).trim();
-
-                    var finalSourceIdInt = Graph.internalIdLookup.get(sourceIdInt);
-                    var finalTargetIdInt = Graph.internalIdLookup.get(targetIdInt);
-
-                    // Safety Check: Ensure Source Node exists (Old or New)
-                    if (!finalSourceIdInt) {
-                        // Fallback: Scan existing nodes (expensive, but rare)
-                        var sourceNode = cy.nodes().filter(function (ele) {
-                            var allIds = ele.data('allIds');
-                            return allIds && allIds.includes(sourceIdInt);
-                        });
-                        if (sourceNode.length > 0) {
-                            finalSourceIdInt = Interner.get(sourceNode[0].id());
-                            Graph.internalIdLookup.set(sourceIdInt, finalSourceIdInt);
-                        } else {
-                            // If not found, we can't add the edge
-                            return;
-                        }
-                    }
-
-                    if (!finalTargetIdInt) finalTargetIdInt = targetIdInt;
-
-                    var hasEdge = false;
-                    if (Graph.adjacencyList.has(finalSourceIdInt)) {
-                        if (Graph.adjacencyList.get(finalSourceIdInt).has(finalTargetIdInt)) hasEdge = true;
-                    }
-                    if (!hasEdge && Graph.adjacencyList.has(finalTargetIdInt)) {
-                        if (Graph.adjacencyList.get(finalTargetIdInt).has(finalSourceIdInt)) hasEdge = true;
-                    }
-
-                    if (!hasEdge) {
-                        var finalSourceIdStr = Interner.resolve(finalSourceIdInt);
-                        var finalTargetIdStr = Interner.resolve(finalTargetIdInt);
-
-                        edgesToAdd.push({
-                            group: 'edges',
+                        nodesToAdd.push({
+                            group: 'nodes',
                             data: {
-                                id: edgeIdStr,
-                                source: finalSourceIdStr,
-                                target: finalTargetIdStr,
-                                label: edgeLabel
+                                id: targetId,
+                                label: nodeData.label || 'Unknown',
+                                color: colors[0],
+                                pieImage: pieImage,
+                                properties: nodeData.properties,
+                                isExpanded: false
                             }
                         });
 
-                        if (!Graph.adjacencyList.has(finalSourceIdInt)) {
-                            Graph.adjacencyList.set(finalSourceIdInt, new Set());
-                        }
-                        Graph.adjacencyList.get(finalSourceIdInt).add(finalTargetIdInt);
-
-                        if (!Graph.adjacencyList.has(finalTargetIdInt)) {
-                            Graph.adjacencyList.set(finalTargetIdInt, new Set());
-                        }
-                        Graph.adjacencyList.get(finalTargetIdInt).add(finalSourceIdInt);
-                    }
-                });
-            });
-
-            var allEles = [];
-            if (nodesToAdd.length > 0) allEles = allEles.concat(nodesToAdd);
-            if (edgesToAdd.length > 0) allEles = allEles.concat(edgesToAdd);
-
-            if (allEles.length > 0) {
-                try {
-                    var addedEles = cy.add(allEles);
-                    Graph.runLayout(addedEles);
-                } catch (e) {
-                    console.error("Error adding elements or running layout:", e);
-                }
-            }
-            Graph.updateStats();
-        },
-
-        expandNodes: function (nodes) {
-            if (!cy) return;
-            if (Graph.isExpanding) return;
-
-            var idsToExpand = [];
-            var nodeMap = new Map();
-
-            nodes.forEach(function (ele) {
-                var allIds = ele.data('allIds') || [];
-                var expandedIds = ele.data('expandedIds') || [];
-                var expandedSet = new Set(expandedIds);
-
-                var newIds = allIds.filter(function (id) { return !expandedSet.has(id); });
-
-                newIds.forEach(function (idInt) {
-                    idsToExpand.push(Interner.resolve(idInt));
-                    nodeMap.set(idInt, ele);
-                });
-            });
-
-            if (idsToExpand.length === 0) {
-                Graph.showStatus(window.i18n.get('graph.noNewData'), "info");
-                return;
-            }
-
-            Graph.isExpanding = true;
-
-            var config = window.parent.APP_CONFIG;
-            if (!config) {
-                Graph.isExpanding = false;
-                return;
-            }
-
-            var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
-            var payload = {
-                ViewGroupID: 1,
-                SourceNodeDataIDs: idsToExpand,
-                FilterNodes: [], // No filters for direct expansion? Or should we apply global filters?
-                MaxNeighbors: maxNeighbors,
-                Lang: config.Lang
-            };
-
-            var viewGroupId = $('#view-groups-dropdown').val();
-            if (viewGroupId) payload.ViewGroupID = parseInt(viewGroupId);
-
-            // Apply global filters if present?
-            var $grid = $('#legends-grid');
-            if ($grid.length > 0) {
-                var selectedRowIds = $grid.jqGrid('getGridParam', 'selarrrow');
-                if (selectedRowIds) {
-                    selectedRowIds.forEach(function (rowId) {
-                        var $row = $grid.find('tr#' + rowId);
-                        var fromDate = $row.find('.from-date').val();
-                        var toDate = $row.find('.to-date').val();
-
-                        function parseDate(d, isFrom) {
-                            if (!d) return isFrom ? '1900-01-01' : '9999-12-31';
-                            var parts = d.split('/');
-                            if (parts.length === 3) return parts[2] + '-' + parts[1] + '-' + parts[0];
-                            return isFrom ? '1900-01-01' : '9999-12-31';
-                        }
-
-                        payload.FilterNodes.push({
-                            NodeID: parseInt(rowId),
-                            FromDate: parseDate(fromDate, true),
-                            ToDate: parseDate(toDate, false)
-                        });
-                    });
-                }
-            }
-
-            $.ajax({
-                url: config.api.nodesExpand.path,
-                method: config.api.nodesExpand.method,
-                contentType: 'application/json',
-                data: JSON.stringify(payload),
-                success: function (data) {
-                    Graph.addExpansionResults(data);
-
-                    idsToExpand.forEach(function (idStr) {
-                        var idInt = Interner.get(idStr);
-                        var node = nodeMap.get(idInt);
-                        if (node) {
-                            var expandedIds = node.data('expandedIds') || [];
-                            if (!expandedIds.includes(idInt)) {
-                                expandedIds.push(idInt);
-                                node.data('expandedIds', expandedIds);
-                            }
-
-                            var allIds = node.data('allIds');
-                            if (allIds.length === expandedIds.length) {
-                                var flags = node.data('flags') | FLAGS.EXPANDED;
-                                node.data('flags', flags);
-                                node.addClass('expanded');
-
-                                var nodeIdInt = Interner.get(node.id());
-                                Graph.expandableNodeIds.delete(nodeIdInt);
-                            }
-                        }
-                    });
-
-                    Graph.isExpanding = false;
-                    Graph.updateStats();
-                },
-                error: function (err) {
-                    console.error("Expansion failed", err);
-                    Graph.showStatus(window.i18n.get('graph.expansionFailed'), "error");
-                    Graph.isExpanding = false;
-                }
-            });
-        },
-
-        expandNextBatch: function () {
-            if (!cy) return;
-            if (Graph.isExpanding) return;
-            Graph.isExpanding = true;
-
-            var batchSize = parseInt($('#setting-batch-size').val()) || 50;
-            var maxNeighbors = parseInt($('#setting-max-neighbors').val()) || 100;
-
-            var expandableNodes = [];
-            var idsToRemove = [];
-
-            for (var idInt of Graph.expandableNodeIds) {
-                if (expandableNodes.length >= batchSize) break;
-
-                var idStr = Interner.resolve(idInt);
-                var node = cy.getElementById(idStr);
-                if (node.length === 0) {
-                    idsToRemove.push(idInt);
-                    continue;
-                }
-
-                var allIds = node.data('allIds') || [];
-                var expandedIds = node.data('expandedIds') || [];
-
-                if (allIds.length > expandedIds.length) {
-                    expandableNodes.push(node);
-                } else {
-                    idsToRemove.push(idInt);
-                }
-            }
-
-            idsToRemove.forEach(function (id) { Graph.expandableNodeIds.delete(id); });
-
-            if (expandableNodes.length === 0) {
-                Graph.isExpanding = false;
-                if (Graph.expandableNodeIds.size === 0) {
-                    if (Graph.autoExpand) {
-                        Graph.setAutoExpand(false);
-                        $('#setting-auto-expand').prop('checked', false);
-                        cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
-                        Graph.showStatus("All nodes expanded", "success");
+                        Graph.unexpandedNodes.add(targetId);
                     } else {
-                        Graph.showStatus(window.i18n.get('graph.noUnexpanded'), "info");
+                        // Update existing node - add new properties
+                        var existingProps = existingNode.data('properties') || [];
+                        nodeData.properties.forEach(function (newProp) {
+                            existingProps.push(newProp);
+                        });
+
+                        existingNode.data('properties', existingProps);
+
+                        // Update pie chart
+                        var colors = existingProps.map(p => p.NodeColor);
+                        var pieImage = Graph.createPieChart(colors);
+                        existingNode.data('pieImage', pieImage);
+                        existingNode.data('color', colors[0]);
                     }
-                } else {
-                    Graph.showStatus(window.i18n.get('graph.noUnexpandedPass'), "info");
+                });
+
+                // Update source node properties
+                results.forEach(function (item) {
+                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
+                    var sourceNode = cy.getElementById(sourceId);
+
+                    if (sourceNode.length > 0) {
+                        var sourceProps = sourceNode.data('properties') || [];
+
+                        // Add source property
+                        sourceProps.push({
+                            NodeID: item.SourceNodeID,
+                            GroupNodeID: item.SourceGroupNodeID,
+                            NodeValueID: item.SourceNodeValueID,
+                            NodeColor: item.SourceNodeColor
+                        });
+
+                        sourceNode.data('properties', sourceProps);
+
+                        // Update pie chart
+                        var colors = sourceProps.map(p => p.NodeColor);
+                        var pieImage = Graph.createPieChart(colors);
+                        sourceNode.data('pieImage', pieImage);
+                        sourceNode.data('color', colors[0]);
+                    }
+                });
+
+                // Create edges
+                var processedPairs = new Set();
+
+                results.forEach(function (item) {
+                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
+                    var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
+                    var edgeId = 'e' + item.RelationDataID;
+
+                    // Create a unique key for the pair (sorted to be direction-agnostic)
+                    var pairKey = [sourceId, targetId].sort().join('|');
+
+                    // 1. Check if we already processed this pair in this batch
+                    if (processedPairs.has(pairKey)) return;
+
+                    // 2. Check if edge already exists in graph (by ID)
+                    if (cy.getElementById(edgeId).length > 0) return;
+
+                    // 3. Check if ANY edge exists between these two nodes in the graph
+                    // Only possible if both nodes are already in the graph
+                    var sourceNode = cy.getElementById(sourceId);
+                    var targetNode = cy.getElementById(targetId);
+
+                    if (sourceNode.length > 0 && targetNode.length > 0) {
+                        // edgesWith returns edges in either direction
+                        if (sourceNode.edgesWith(targetNode).length > 0) return;
+                    }
+
+                    edgesToAdd.push({
+                        group: 'edges',
+                        data: {
+                            id: edgeId,
+                            source: sourceId,
+                            target: targetId,
+                            label: item.Relation || ''
+                        }
+                    });
+
+                    processedPairs.add(pairKey);
+                });
+
+                // Add new elements
+                if (nodesToAdd.length > 0) {
+                    cy.add(nodesToAdd);
+                    console.log('Added ' + nodesToAdd.length + ' target nodes');
                 }
-                return;
-            }
 
-            var idsToExpand = [];
-            var nodeMap = new Map();
+                if (edgesToAdd.length > 0) {
+                    cy.add(edgesToAdd);
+                    console.log('Added ' + edgesToAdd.length + ' edges');
+                }
 
-            expandableNodes.forEach(function (ele) {
-                var allIds = ele.data('allIds') || [];
-                var expandedIds = ele.data('expandedIds') || [];
-                var expandedSet = new Set(expandedIds);
-
-                var newIds = allIds.filter(function (id) { return !expandedSet.has(id); });
-
-                newIds.forEach(function (idInt) {
-                    idsToExpand.push(Interner.resolve(idInt));
-                    nodeMap.set(idInt, ele);
+                // Mark source nodes as expanded
+                sourceIdentities.forEach(function (identity) {
+                    var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
+                    var node = cy.getElementById(nodeId);
+                    if (node.length > 0) {
+                        node.data('isExpanded', true);
+                        node.addClass('expanded');
+                        Graph.unexpandedNodes.delete(nodeId);
+                    }
                 });
             });
 
-            if (idsToExpand.length === 0) {
-                Graph.isExpanding = false;
-                Graph.showStatus(window.i18n.get('graph.noNewData'), "info");
-                return;
+            // Run layout
+            // Run layout
+            if (nodesToAdd.length > 0 || edgesToAdd.length > 0) {
+                var layoutName = $('#setting-layout').val() || 'cose';
+                Graph.changeLayout(layoutName);
             }
 
-            var filters = [];
-            var $grid = $('#legends-grid');
-            if ($grid.length > 0) {
-                var selectedRowIds = $grid.jqGrid('getGridParam', 'selarrrow');
-                if (selectedRowIds) {
-                    selectedRowIds.forEach(function (rowId) {
-                        var $row = $grid.find('tr#' + rowId);
-                        var fromDate = $row.find('.from-date').val();
-                        var toDate = $row.find('.to-date').val();
-
-                        function parseDate(d, isFrom) {
-                            if (!d) return isFrom ? '1900-01-01' : '9999-12-31';
-                            var parts = d.split('/');
-                            if (parts.length === 3) return parts[2] + '-' + parts[1] + '-' + parts[0];
-                            return isFrom ? '1900-01-01' : '9999-12-31';
-                        }
-
-                        filters.push({
-                            NodeID: parseInt(rowId),
-                            FromDate: parseDate(fromDate, true),
-                            ToDate: parseDate(toDate, false)
-                        });
-                    });
-                }
-            }
-
-            var config = window.parent.APP_CONFIG;
-            if (!config) {
-                Graph.isExpanding = false;
-                return;
-            }
-
-            var payload = {
-                ViewGroupID: 1,
-                SourceNodeDataIDs: idsToExpand,
-                FilterNodes: filters,
-                MaxNeighbors: maxNeighbors,
-                Lang: config.Lang
-            };
-
-            var viewGroupId = $('#view-groups-dropdown').val();
-            if (viewGroupId) payload.ViewGroupID = parseInt(viewGroupId);
-
-            $.ajax({
-                url: config.api.nodesExpand.path,
-                method: config.api.nodesExpand.method,
-                contentType: 'application/json',
-                data: JSON.stringify(payload),
-                success: function (data) {
-                    Graph.addExpansionResults(data);
-
-                    idsToExpand.forEach(function (idStr) {
-                        var idInt = Interner.get(idStr);
-                        var node = nodeMap.get(idInt);
-                        if (node) {
-                            var expandedIds = node.data('expandedIds') || [];
-                            if (!expandedIds.includes(idInt)) {
-                                expandedIds.push(idInt);
-                                node.data('expandedIds', expandedIds);
-                            }
-
-                            var allIds = node.data('allIds');
-                            if (allIds.length === expandedIds.length) {
-                                // Optimization: Update Flag
-                                var flags = node.data('flags') | FLAGS.EXPANDED;
-                                node.data('flags', flags);
-                                node.addClass('expanded');
-
-                                var nodeIdInt = Interner.get(node.id());
-                                Graph.expandableNodeIds.delete(nodeIdInt);
-                            }
-                        }
-                    });
-
-                    Graph.isExpanding = false;
-
-                    if (Graph.autoExpand) {
-                        Graph.autoExpandCount++;
-                        var maxBatches = parseInt($('#setting-max-batches').val()) || 10;
-                        if (Graph.autoExpandCount < maxBatches) {
-                            setTimeout(Graph.expandNextBatch, 50);
-                        } else {
-                            Graph.setAutoExpand(false);
-                            $('#setting-auto-expand').prop('checked', false);
-                            cy.animate({ fit: { eles: cy.elements(), padding: 50 }, duration: 500 });
-                            Graph.showStatus("Auto-expansion paused after " + maxBatches + " batches.", "info");
-                        }
-                    }
-                    Graph.updateStats();
-                },
-                error: function (err) {
-                    console.error("Expansion failed", err);
-                    Graph.showStatus(window.i18n.get('graph.expansionFailed'), "error");
-                    Graph.isExpanding = false;
-                }
-            });
+            Graph.updateStats();
         },
 
-        clear: function () {
-            Interner.clear();
-            Graph.nodeLookup = new Map();
-            Graph.internalIdLookup = new Map();
-            Graph.idSets = new Map();
-            Graph.svgCache = {};
-            Graph.adjacencyList = new Map();
-            Graph.expandableNodeIds = new Set();
-            Graph.isExpanding = false;
-            Graph.autoExpand = false;
-            Graph.autoExpandCount = 0;
-            if (cy) cy.elements().remove();
-            Graph.updateStats();
+        // Expand next batch
+        expandNextBatch: function (batchSize) {
+            if (Graph.isExpanding || Graph.unexpandedNodes.size === 0) return;
+
+            batchSize = batchSize || 10;
+            var batch = [];
+            var count = 0;
+
+            Graph.unexpandedNodes.forEach(function (nodeId) {
+                if (count < batchSize) {
+                    var node = cy.getElementById(nodeId);
+                    if (node.length > 0) {
+                        var props = node.data('properties');
+                        if (props && props.length > 0) {
+                            batch.push({
+                                GroupNodeID: props[0].GroupNodeID,
+                                NodeValueID: props[0].NodeValueID
+                            });
+                            count++;
+                        }
+                    }
+                }
+            });
+
+            if (batch.length > 0) {
+                Graph.expandNodes(batch);
+            }
         },
 
         setAutoExpand: function (enabled) {
             Graph.autoExpand = enabled;
-            if (enabled) {
-                Graph.autoExpandCount = 0;
+            if (enabled && Graph.unexpandedNodes.size > 0) {
                 Graph.expandNextBatch();
             }
         },
 
-        setVisibleLegendIds: function (visibleIds) {
+        updateStats: function () {
+            if (!cy) return;
+            $('#stat-nodes').text(cy.nodes().length);
+            $('#stat-edges').text(cy.edges().length);
+            $('#stat-pending').text(Graph.unexpandedNodes.size);
+        },
+
+        changeLayout: function (layoutName) {
             if (!cy) return;
 
-            var visibleSet = new Set(visibleIds.map(function (id) { return parseInt(id); }));
+            var layoutConfig = {
+                name: layoutName,
+                animate: true,
+                animationDuration: 500,
+                padding: 30
+            };
 
-            cy.batch(function () {
-                cy.nodes().forEach(function (node) {
-                    var legendId = node.data('legendId');
-                    // If legendId is 0 or undefined, we default to visible (or hidden? usually visible)
-                    // Assuming all valid nodes have a legendId.
-                    if (legendId && !visibleSet.has(legendId)) {
-                        node.addClass('hidden');
-                        // Hide connected edges too
-                        node.connectedEdges().addClass('hidden');
-                    } else {
-                        node.removeClass('hidden');
-                        // Show connected edges if both source and target are visible
-                        node.connectedEdges().forEach(function (edge) {
-                            var source = edge.source();
-                            var target = edge.target();
-                            if (!source.hasClass('hidden') && !target.hasClass('hidden')) {
-                                edge.removeClass('hidden');
-                            }
-                        });
-                    }
-                });
-            });
-        },
-
-        getSelectedNodes: function () {
-            if (!cy) return [];
-            return cy.nodes(':selected');
-        },
-
-        findShortestPath: function (sourceId, targetId) {
-            if (!cy) return { found: false };
-
-            var source = cy.getElementById(sourceId);
-            var target = cy.getElementById(targetId);
-
-            if (source.length === 0 || target.length === 0) return { found: false };
-
-            var aStar = cy.elements().aStar({
-                root: source,
-                goal: target,
-                directed: false // Allow undirected paths for better usability
-            });
-
-            if (aStar.found) {
-                // Check for duplicates
-                if (!Graph.paths) Graph.paths = new Map();
-
-                var isDuplicate = false;
-                var existingPathId = null;
-                var existingColor = null;
-
-                Graph.paths.forEach(function (path, id) {
-                    var start = path[0];
-                    var end = path[path.length - 1];
-                    // Check if endpoints match (undirected)
-                    if ((start.id() === sourceId && end.id() === targetId) ||
-                        (start.id() === targetId && end.id() === sourceId)) {
-                        isDuplicate = true;
-                        existingPathId = id;
-                        existingColor = path.data('pathColor');
-                    }
-                });
-
-                if (isDuplicate) {
-                    // Just ensure it's highlighted
-                    var existingPath = Graph.paths.get(existingPathId);
-                    existingPath.addClass('path-highlight');
-                    return {
-                        found: true,
-                        id: existingPathId,
-                        length: existingPath.length, // Note: this is element count, distance is better but not stored
-                        color: existingColor,
-                        isDuplicate: true
-                    };
-                }
-                var pathId = Date.now(); // Simple ID
-                // Store path in a map if needed for toggling, or just use class
-                if (!Graph.paths) Graph.paths = new Map();
-                Graph.paths.set(pathId, aStar.path);
-
-                // Generate Distinct Color
-                if (!Graph.pathColorIndex) Graph.pathColorIndex = 0;
-                var colors = [
-                    '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
-                    '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-                    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000',
-                    '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080',
-                    '#ffffff', '#000000'
-                ];
-                var color = colors[Graph.pathColorIndex % colors.length];
-                Graph.pathColorIndex++;
-
-                // Assign color to path elements
-                aStar.path.data('pathColor', color);
-
-                // Highlight immediately
-                aStar.path.addClass('path-highlight');
-
-                return {
-                    found: true,
-                    id: pathId,
-                    length: aStar.distance,
-                    color: color
-                };
+            switch (layoutName) {
+                case 'cose':
+                    layoutConfig.nodeRepulsion = 400000;
+                    layoutConfig.idealEdgeLength = 100;
+                    layoutConfig.edgeElasticity = 100;
+                    layoutConfig.nestingFactor = 5;
+                    layoutConfig.gravity = 80;
+                    layoutConfig.numIter = 1000;
+                    layoutConfig.initialTemp = 200;
+                    layoutConfig.coolingFactor = 0.95;
+                    layoutConfig.minTemp = 1.0;
+                    break;
+                case 'concentric':
+                    layoutConfig.minNodeSpacing = 50;
+                    layoutConfig.levelWidth = function (nodes) { return 2; };
+                    break;
+                case 'breadthfirst':
+                    layoutConfig.directed = true;
+                    layoutConfig.spacingFactor = 1.75;
+                    break;
+                case 'grid':
+                    layoutConfig.avoidOverlap = true;
+                    break;
+                case 'circle':
+                    layoutConfig.avoidOverlap = true;
+                    layoutConfig.radius = null;
+                    break;
             }
 
-            return { found: false };
+            var layout = cy.layout(layoutConfig);
+            layout.run();
+            console.log('Layout changed to:', layoutName);
         },
 
-        togglePath: function (pathId, visible) {
-            if (!Graph.paths || !Graph.paths.has(pathId)) return;
-            var path = Graph.paths.get(pathId);
-            if (visible) {
-                path.addClass('path-highlight');
-            } else {
-                path.removeClass('path-highlight');
+        clear: function () {
+            if (cy) {
+                cy.elements().remove();
+                Graph.unexpandedNodes.clear();
+                Graph.updateStats();
+                console.log('Graph cleared');
             }
-        },
-
-        removePath: function (pathId) {
-            if (!Graph.paths || !Graph.paths.has(pathId)) return;
-            var path = Graph.paths.get(pathId);
-            path.removeClass('path-highlight');
-            Graph.paths.delete(pathId);
         }
     };
 
     window.Graph = Graph;
+
+    // Double-click to expand
+    $(document).ready(function () {
+        if (cy) {
+            cy.on('dblclick', 'node', function (evt) {
+                var node = evt.target;
+                if (!node.data('isExpanded')) {
+                    var props = node.data('properties');
+                    if (props && props.length > 0) {
+                        Graph.expandNodes([{
+                            GroupNodeID: props[0].GroupNodeID,
+                            NodeValueID: props[0].NodeValueID
+                        }]);
+                    }
+                }
+            });
+        }
+    });
 
 })();

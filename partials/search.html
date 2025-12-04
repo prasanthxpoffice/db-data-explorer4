@@ -20,24 +20,18 @@
         style="display:none; width: 100%; margin-top: 10px; padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
         data-i18n="search.show">Show</button>
 
+    <!-- Expansion Controls -->
     <div id="expansion-controls" style="display:none; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="display: flex; align-items: center;">
-                <label class="switch" style="transform: scale(0.8); margin: 0 5px 0 0;">
-                    <input type="checkbox" id="setting-auto-expand">
-                    <span class="slider round"></span>
-                </label>
-                <span data-i18n="settings.autoExpand">Auto-Expand</span>
-            </div>
-            <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                <label for="setting-max-batches" style="font-size: 0.9em; color: #666;"
-                    data-i18n="settings.maxBatches">Max Batches:</label>
-                <input type="number" id="setting-max-batches" value="10" min="1" max="100"
-                    style="width: 50px; padding: 2px;">
-            </div>
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <label class="switch" style="margin-right: 10px;">
+                <input type="checkbox" id="setting-auto-expand">
+                <span class="slider round"></span>
+            </label>
+            <span data-i18n="settings.autoExpand">Auto-Expand</span>
         </div>
+
         <button id="btn-expand-next" data-i18n="settings.expandNext"
-            style="width: 100%; padding: 8px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px;">
+            style="width: 100%; padding: 8px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Expand Next Batch
         </button>
     </div>
@@ -45,7 +39,6 @@
 
 <script>
     (function () {
-        // Access config from parent window
         var config = window.parent.APP_CONFIG;
         if (!config || !config.api || !config.api.viewGroupNodes || !config.api.nodeDataAutoComplete) {
             console.error("APP_CONFIG or APIs not found");
@@ -55,9 +48,8 @@
 
         var url = config.api.viewGroupNodes.path;
         var autoCompleteUrl = config.api.nodeDataAutoComplete.path;
-        var nodesSearchUrl = config.api.nodesSearch.path;
-        var currentLang = window.i18n ? window.i18n.currentLang : 'en';
-        var selectedItem = null; // Store currently selected autocomplete item
+        var currentLang = window.i18n ? window.i18n.currentLang : 'en-US';
+        var selectedItem = null;
 
         // Initialize Autocomplete
         $("#node-search-input").autocomplete({
@@ -79,7 +71,8 @@
                             return {
                                 label: item.NodeValue,
                                 value: item.NodeValue,
-                                id: item.NodeDataID
+                                groupNodeId: item.GroupNodeID,
+                                nodeValueId: item.NodeValueID
                             };
                         });
                         response(mappedData);
@@ -100,25 +93,33 @@
         // Add Button Logic
         $('#add-search-item-btn').on('click', function () {
             if (selectedItem) {
-                addSearchCard(selectedItem);
-                // Reset input
+                var selectedNodeId = parseInt($('#search-nodes-dropdown').val());
+                var selectedOption = $('#search-nodes-dropdown option:selected');
+                var nodeColor = selectedOption.data('color') || '#4A90E2';
+
+                addSearchCard(selectedItem, selectedNodeId, nodeColor);
                 $('#node-search-input').val('');
                 selectedItem = null;
                 $(this).prop('disabled', true);
             }
         });
 
-        function addSearchCard(item) {
+        function addSearchCard(item, nodeId, nodeColor) {
             var $container = $('#search-results');
             $container.find('.no-items').hide();
 
             // Check for duplicates
-            if ($container.find('.search-card[data-id="' + item.id + '"]').length > 0) {
-                return; // Already added
+            var selector = '.search-card[data-group-id="' + item.groupNodeId + '"][data-node-value-id="' + item.nodeValueId + '"]';
+            if ($container.find(selector).length > 0) {
+                return;
             }
 
             var cardHtml = `
-                <div class="search-card" data-id="${item.id}">
+                <div class="search-card" 
+                     data-node-id="${nodeId}"
+                     data-group-id="${item.groupNodeId}" 
+                     data-node-value-id="${item.nodeValueId}"
+                     data-color="${nodeColor}">
                     <span>${item.label}</span>
                     <span class="remove-btn" title="Remove">×</span>
                 </div>
@@ -127,7 +128,7 @@
             updateShowButtonVisibility();
         }
 
-        // Remove Card Logic (Delegated)
+        // Remove Card Logic
         $('#search-results').on('click', '.remove-btn', function () {
             $(this).closest('.search-card').remove();
             if ($('#search-results .search-card').length === 0) {
@@ -138,92 +139,60 @@
 
         function updateShowButtonVisibility() {
             var hasItems = $('#search-results .search-card').length > 0;
-            if (hasItems) {
-                $('#show-graph-btn').show();
-            } else {
-                $('#show-graph-btn').hide();
-                $('#expansion-controls').hide(); // Hide if no items to search
-            }
+            $('#show-graph-btn').toggle(hasItems);
         }
 
-        // Auto-Expand Logic
+        // Show Button Logic - Create nodes directly from search list
+        $('#show-graph-btn').on('click', function () {
+            var searchNodes = [];
+            $('#search-results .search-card').each(function () {
+                var nodeId = parseInt($(this).data('node-id'));
+                var groupId = parseInt($(this).data('group-id'));
+                var valueId = $(this).data('node-value-id').toString();
+                var color = $(this).data('color');
+                var label = $(this).find('span').first().text();
+
+                searchNodes.push({
+                    NodeID: nodeId,
+                    GroupNodeID: groupId,
+                    NodeValueID: valueId,
+                    NodeColor: color,
+                    NodeValue: label
+                });
+            });
+
+            if (searchNodes.length === 0) return;
+
+            // Clear graph and create nodes directly
+            if (window.Graph && window.Graph.clear) {
+                window.Graph.clear();
+            }
+
+            if (window.Graph && window.Graph.createSearchNodes) {
+                window.Graph.createSearchNodes(searchNodes);
+            }
+
+            // Show expansion controls
+            $('#expansion-controls').show();
+        });
+
+        // Auto-Expand Toggle
         $('#setting-auto-expand').on('change', function () {
             var enabled = $(this).is(':checked');
-            if (enabled) {
-                $('#btn-expand-next').hide();
-            } else {
-                $('#btn-expand-next').show();
-            }
-            // Update Graph state if it exists
             if (window.Graph && window.Graph.setAutoExpand) {
                 window.Graph.setAutoExpand(enabled);
             }
         });
 
+        // Expand Next Batch Button
         $('#btn-expand-next').on('click', function () {
             if (window.Graph && window.Graph.expandNextBatch) {
-                window.Graph.expandNextBatch();
+                var batchSize = parseInt($('#setting-batch-size').val()) || 10;
+                window.Graph.expandNextBatch(batchSize);
             }
         });
 
-        // Show Button Logic
-        $('#show-graph-btn').on('click', function () {
-            var nodeDataIds = [];
-            $('#search-results .search-card').each(function () {
-                nodeDataIds.push(parseInt($(this).data('id')));
-            });
-
-            if (nodeDataIds.length === 0) return;
-
-            // Clear existing graph before showing new results
-            if (window.Graph && window.Graph.clear) {
-                window.Graph.clear();
-            }
-
-            // Hide controls initially when starting new search
-            $('#expansion-controls').hide();
-
-            // Check Auto-Expand State
-            var autoExpand = $('#setting-auto-expand').is(':checked');
-            if (window.Graph && window.Graph.setAutoExpand) {
-                window.Graph.autoExpand = autoExpand;
-                window.Graph.autoExpandCount = 0;
-            }
-
-            $.ajax({
-                url: nodesSearchUrl,
-                method: config.api.nodesSearch.method,
-                contentType: "application/json",
-                data: JSON.stringify({
-                    nodeDataIds: nodeDataIds,
-                    lang: currentLang
-                }),
-                success: function (response) {
-                    if (window.Graph && window.Graph.addNodes) {
-                        window.Graph.addNodes(response);
-
-                        // Show expansion controls if we have nodes
-                        if (response && response.length > 0) {
-                            $('#expansion-controls').show();
-                        }
-
-                        // Trigger Auto-Expand if enabled
-                        if (autoExpand && window.Graph.expandNextBatch) {
-                            setTimeout(function () {
-                                window.Graph.expandNextBatch();
-                            }, 1000);
-                        }
-                    } else {
-                        console.error("Graph module not found in window");
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error("Error searching nodes:", error);
-                    alert(window.i18n.get('search.failedLoad'));
-                }
-            });
-        });
-
+        // Load nodes dropdown with colors
         function loadSearchNodes(viewGroupId) {
             var $dropdown = $('#search-nodes-dropdown');
             $dropdown.html('<option value="">' + window.i18n.get('search.loading') + '</option>');
@@ -245,10 +214,15 @@
                         response.forEach(function (item) {
                             var value = item.NodeID || item.id;
                             var text = item.NodeName || item.name;
-                            $dropdown.append($('<option>', { value: value, text: text }));
+                            var color = item.ColumnColor || '#4A90E2';
+
+                            var option = $('<option>', {
+                                value: value,
+                                text: text
+                            });
+                            option.data('color', color);
+                            $dropdown.append(option);
                         });
-                    } else {
-                        $dropdown.append('<option value="">' + window.i18n.get('search.error') + '</option>');
                     }
                 },
                 error: function (xhr, status, error) {

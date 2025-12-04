@@ -94,10 +94,16 @@ namespace IAS.Areas.DbGraph.Models
         public DateTime? ToDate { get; set; }
     }
 
+    public class NodeIdentity
+    {
+        public int GroupNodeID { get; set; }
+        public string NodeValueID { get; set; }
+    }
+
     public class NodesExpandRequest
     {
         public int ViewGroupID { get; set; }
-        public List<int> SourceNodeDataIDs { get; set; }
+        public List<NodeIdentity> SourceNodeIdentities { get; set; }
         public List<NodeFilterModel> FilterNodes { get; set; }
         public int MaxNeighbors { get; set; } = 5;
         public string Lang { get; set; } = "en";

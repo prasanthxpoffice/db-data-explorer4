@@ -328,14 +328,16 @@ namespace IAS.Areas.DbGraph.Controllers
             string sqlLang = (request.Lang == "ar") ? "ar-AE" : "en-US";
             var dt = new DataTable();
 
-            // Create DataTable for Source Nodes TVP
+            // Create DataTable for Source Node Identities TVP
             var sourceTvp = new DataTable();
-            sourceTvp.Columns.Add("NodeDataID", typeof(int));
-            if (request.SourceNodeDataIDs != null)
+            sourceTvp.Columns.Add("GroupNodeID", typeof(int));
+            sourceTvp.Columns.Add("NodeValueID", typeof(string));
+            
+            if (request.SourceNodeIdentities != null)
             {
-                foreach (var id in request.SourceNodeDataIDs)
+                foreach (var identity in request.SourceNodeIdentities)
                 {
-                    sourceTvp.Rows.Add(id);
+                    sourceTvp.Rows.Add(identity.GroupNodeID, identity.NodeValueID);
                 }
             }
 
@@ -349,8 +351,30 @@ namespace IAS.Areas.DbGraph.Controllers
             {
                 foreach (var filter in request.FilterNodes)
                 {
-                    filterTvp.Rows.Add(filter.NodeID, filter.FromDate ?? (object)DBNull.Value, filter.ToDate ?? (object)DBNull.Value);
+                    // Normalize dates to avoid timezone issues (ensure From is start of day, To is end of day)
+                    var fromDate = filter.FromDate?.Date;
+                    var toDate = filter.ToDate?.Date.AddDays(1).AddTicks(-1);
+                    
+                    filterTvp.Rows.Add(filter.NodeID, fromDate ?? (object)DBNull.Value, toDate ?? (object)DBNull.Value);
                 }
+            }
+
+            // Log to file for debugging
+            var logPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nodesexpand_debug.log");
+            var logMessage = new System.Text.StringBuilder();
+            logMessage.AppendLine($"\n=== NodesExpand Debug {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+            logMessage.AppendLine($"ViewGroupID: {request.ViewGroupID}");
+            logMessage.AppendLine($"MaxNeighbors: {request.MaxNeighbors}");
+            logMessage.AppendLine($"Lang: {sqlLang}");
+            logMessage.AppendLine($"Source Identities Count: {sourceTvp.Rows.Count}");
+            foreach (DataRow row in sourceTvp.Rows)
+            {
+                logMessage.AppendLine($"  - GroupNodeID: {row["GroupNodeID"]}, NodeValueID: '{row["NodeValueID"]}'");
+            }
+            logMessage.AppendLine($"Filter Nodes Count: {filterTvp.Rows.Count}");
+            foreach (DataRow row in filterTvp.Rows)
+            {
+                logMessage.AppendLine($"  - NodeID: {row["NodeID"]}, FromDate: {row["FromDate"]}, ToDate: {row["ToDate"]}");
             }
 
             using (var conn = new SqlConnection(_connectionString))
@@ -362,9 +386,9 @@ namespace IAS.Areas.DbGraph.Controllers
                     cmd.Parameters.AddWithValue("@MaxNeighbors", request.MaxNeighbors);
                     cmd.Parameters.AddWithValue("@Lang", sqlLang);
                     
-                    var pSource = cmd.Parameters.AddWithValue("@SourceNodeDataIDs", sourceTvp);
+                    var pSource = cmd.Parameters.AddWithValue("@SourceNodeIdentities", sourceTvp);
                     pSource.SqlDbType = SqlDbType.Structured;
-                    pSource.TypeName = "[graphdb].[NodeDataIDTable]";
+                    pSource.TypeName = "[graphdb].[NodeIdentityTable]";
 
                     var pFilter = cmd.Parameters.AddWithValue("@FilterNodes", filterTvp);
                     pFilter.SqlDbType = SqlDbType.Structured;
@@ -377,6 +401,15 @@ namespace IAS.Areas.DbGraph.Controllers
                     }
                 }
             }
+
+            logMessage.AppendLine($"Results Count: {dt.Rows.Count}");
+            logMessage.AppendLine("========================");
+            
+            try
+            {
+                System.IO.File.AppendAllText(logPath, logMessage.ToString());
+            }
+            catch { /* Ignore logging errors */ }
 
             var results = dt.AsEnumerable().Select(row =>
                 dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
