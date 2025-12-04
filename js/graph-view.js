@@ -276,4 +276,60 @@
         document.body.removeChild(link);
     };
 
+    Graph.blinkInterval = null;
+
+    Graph.searchNodes = function (searchList) {
+        // Stop existing blink and clear highlights
+        if (Graph.blinkInterval) {
+            clearInterval(Graph.blinkInterval);
+            Graph.blinkInterval = null;
+        }
+        if (Graph.cy) {
+            Graph.cy.nodes().removeClass('blink-highlight');
+        }
+
+        if (!Graph.cy || !searchList || searchList.length === 0) return;
+
+        Graph.cy.batch(function () {
+            var allFoundNodes = Graph.cy.collection();
+
+            searchList.forEach(function (term) {
+                var lowerTerm = term.toLowerCase();
+                // Find nodes where ID or Label contains the term
+                var found = Graph.cy.nodes().filter(function (ele) {
+                    var id = ele.id().toLowerCase();
+                    var label = (ele.data('label') || '').toLowerCase();
+                    return id.indexOf(lowerTerm) !== -1 || label.indexOf(lowerTerm) !== -1;
+                });
+                allFoundNodes = allFoundNodes.union(found);
+            });
+
+            if (allFoundNodes.length > 0) {
+                // Select and Zoom
+                Graph.cy.nodes().unselect();
+                allFoundNodes.select();
+                Graph.cy.fit(allFoundNodes, 50);
+
+                // Infinite Blink Animation
+                var isHighlighted = false;
+                Graph.blinkInterval = setInterval(function () {
+                    if (isHighlighted) {
+                        allFoundNodes.removeClass('blink-highlight');
+                    } else {
+                        allFoundNodes.addClass('blink-highlight');
+                    }
+                    isHighlighted = !isHighlighted;
+                }, 500);
+
+                if (Graph.showStatus) {
+                    Graph.showStatus("Found " + allFoundNodes.length + " nodes", "success");
+                }
+            } else {
+                if (Graph.showStatus) {
+                    Graph.showStatus("No nodes found matching your list", "info");
+                }
+            }
+        });
+    };
+
 })();

@@ -87,6 +87,29 @@
         </button>
     </div>
 
+    <!-- Search on Graph -->
+    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;">
+        <h4 data-i18n="settings.searchTitle" style="margin: 0 0 10px 0; color: #555;">Search on Graph</h4>
+
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="text" id="search-graph-input" data-i18n-placeholder="settings.searchPlaceholder"
+                placeholder="Enter Node ID or Name" style="flex: 1;">
+            <button id="btn-search-add" data-i18n="settings.addBtn" style="background-color: #28a745;">Add</button>
+        </div>
+
+        <div id="search-list-container"
+            style="border: 1px solid #ddd; padding: 5px; height: 100px; overflow-y: auto; margin-bottom: 10px; background: #f9f9f9; border-radius: 4px;">
+            <!-- List items will be added here -->
+        </div>
+
+        <div style="display: flex; gap: 5px;">
+            <button id="btn-search-show" data-i18n="settings.showBtn" style="flex: 1; background-color: #007bff;">Show &
+                Blink</button>
+            <button id="btn-search-clear" data-i18n="settings.clearBtn"
+                style="flex: 1; background-color: #dc3545;">Clear List</button>
+        </div>
+    </div>
+
     <div id="node-settings-modal" title="Entity Settings" style="display:none;">
         <!-- Content loaded dynamically -->
     </div>
@@ -175,6 +198,74 @@
                     window.Graph.saveAsImage();
                 }
             });
+
+            // --- Multi-Node Search Logic ---
+            var searchList = [];
+
+            function updateSearchListUI() {
+                var $container = $('#search-list-container');
+                $container.empty();
+
+                if (searchList.length === 0) {
+                    $container.append('<div style="color: #999; font-style: italic; text-align: center; padding: 10px;" data-i18n="search.noItems">No items added</div>');
+                    if (window.i18n) window.i18n.applyLanguage(window.i18n.currentLang);
+                    return;
+                }
+
+                searchList.forEach(function (term, index) {
+                    var $item = $('<div style="display: flex; justify-content: space-between; align-items: center; padding: 4px; border-bottom: 1px solid #eee; background: #fff;"></div>');
+                    $item.append('<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + term + '</span>');
+
+                    var $removeBtn = $('<span style="cursor: pointer; color: #dc3545; font-weight: bold; padding: 0 5px;">&times;</span>');
+                    $removeBtn.on('click', function () {
+                        searchList.splice(index, 1);
+                        updateSearchListUI();
+                        // Re-trigger search to update blinking nodes
+                        if (window.Graph && window.Graph.searchNodes) {
+                            window.Graph.searchNodes(searchList);
+                        }
+                    });
+
+                    $item.append($removeBtn);
+                    $container.append($item);
+                });
+            }
+
+            $('#btn-search-add').on('click', function () {
+                var val = $('#search-graph-input').val().trim();
+                if (val) {
+                    searchList.push(val);
+                    $('#search-graph-input').val('');
+                    updateSearchListUI();
+                }
+            });
+
+            $('#search-graph-input').on('keypress', function (e) {
+                if (e.which === 13) { // Enter key
+                    $('#btn-search-add').click();
+                }
+            });
+
+            $('#btn-search-clear').on('click', function () {
+                searchList = [];
+                updateSearchListUI();
+                // Stop blinking
+                if (window.Graph && window.Graph.searchNodes) {
+                    window.Graph.searchNodes([]);
+                }
+            });
+
+            $('#btn-search-show').on('click', function () {
+                if (window.Graph && window.Graph.searchNodes) {
+                    window.Graph.searchNodes(searchList);
+                } else {
+                    console.error("Graph.searchNodes not found");
+                }
+            });
+
+            // Initial render
+            updateSearchListUI();
+
         })();
     </script>
 </div>

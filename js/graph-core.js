@@ -16,7 +16,7 @@
         init: function (containerId) {
             Graph.cy = cytoscape({
                 container: $(containerId),
-                textureOnViewport: true,
+                textureOnViewport: false, // Disabled to allow animations (blinking) during scroll
                 pixelRatio: 1,
                 motionBlur: false,
                 hideEdgesOnViewport: true,
@@ -92,6 +92,14 @@
                             'text-background-opacity': 0,
                             'text-border-opacity': 0
                         }
+                    },
+                    {
+                        selector: '.blink-highlight',
+                        style: {
+                            'overlay-color': '#ffeb3b',
+                            'overlay-padding': 5,
+                            'overlay-opacity': 0.5
+                        }
                     }
                 ],
                 layout: {
@@ -158,8 +166,8 @@
             var zoomTimeout;
             var toggleLOD = function () {
                 var zoom = Graph.cy.zoom();
-                // Threshold: Hide labels if zoom is less than 0.75 (75%)
-                var showLabels = zoom >= 0.75;
+                // Threshold: Hide labels if zoom is less than 0.45 (45%)
+                var showLabels = zoom >= 0.45;
 
                 Graph.cy.batch(function () {
                     if (showLabels) {
