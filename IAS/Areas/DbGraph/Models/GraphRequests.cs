@@ -108,4 +108,12 @@ namespace IAS.Areas.DbGraph.Models
         public int MaxNeighbors { get; set; } = 5;
         public string Lang { get; set; } = "en";
     }
+
+    public class NodesFindPathRequest
+    {
+        public int ViewGroupID { get; set; }
+        public List<NodeIdentity> SourceNodeIdentities { get; set; }
+        public int MaxDepth { get; set; } = 4;
+        public string Lang { get; set; } = "en-US";
+    }
 }

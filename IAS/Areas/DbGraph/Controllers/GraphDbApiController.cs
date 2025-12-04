@@ -418,6 +418,61 @@ namespace IAS.Areas.DbGraph.Controllers
             return LargeJson(results);
         }
 
+        [HttpPost]
+        [Route("NodesFindPath")]
+        public ActionResult NodesFindPath(NodesFindPathRequest request)
+        {
+            try 
+            {
+                var dt = new DataTable();
+                var sqlLang = request.Lang == "ar" ? "ar-AE" : "en-US";
+
+                // Create DataTable for Source Node Identities TVP
+                var sourceTvp = new DataTable();
+                sourceTvp.Columns.Add("GroupNodeID", typeof(int));
+                sourceTvp.Columns.Add("NodeValueID", typeof(string));
+
+                if (request.SourceNodeIdentities != null)
+                {
+                    foreach (var identity in request.SourceNodeIdentities)
+                    {
+                        sourceTvp.Rows.Add(identity.GroupNodeID, identity.NodeValueID);
+                    }
+                }
+
+                using (var conn = new SqlConnection(_connectionString))
+                {
+                    using (var cmd = new SqlCommand("[graphdb].[sp_NodesFindPath]", conn))
+                    {
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@ViewGroupID", request.ViewGroupID);
+                        cmd.Parameters.AddWithValue("@MaxDepth", request.MaxDepth);
+                        cmd.Parameters.AddWithValue("@Lang", sqlLang);
+                        
+                        var pSource = cmd.Parameters.AddWithValue("@SourceNodeIdentities", sourceTvp);
+                        pSource.SqlDbType = SqlDbType.Structured;
+                        pSource.TypeName = "[graphdb].[NodeIdentityTable]";
+
+                        conn.Open();
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            dt.Load(reader);
+                        }
+                    }
+                }
+
+                var results = dt.AsEnumerable().Select(row =>
+                    dt.Columns.Cast<DataColumn>().ToDictionary(col => col.ColumnName, col => row[col])
+                ).ToList();
+
+                return LargeJson(results);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message, stackTrace = ex.StackTrace });
+            }
+        }
+
         protected JsonResult LargeJson(object data, JsonRequestBehavior behavior = JsonRequestBehavior.DenyGet)
         {
             return new JsonResult

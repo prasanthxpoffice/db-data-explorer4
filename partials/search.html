@@ -16,6 +16,14 @@
             items added</div>
     </div>
 
+    <div id="find-paths-toggle-container" style="display:none; margin-top: 10px; align-items: center;">
+        <label class="switch" style="margin-right: 10px;">
+            <input type="checkbox" id="toggle-find-paths">
+            <span class="slider round"></span>
+        </label>
+        <span data-i18n="search.findPaths">Find Paths Between Nodes</span>
+    </div>
+
     <button id="show-graph-btn"
         style="display:none; width: 100%; margin-top: 10px; padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
         data-i18n="search.show">Show</button>
@@ -138,8 +146,16 @@
         });
 
         function updateShowButtonVisibility() {
-            var hasItems = $('#search-results .search-card').length > 0;
-            $('#show-graph-btn').toggle(hasItems);
+            var itemCount = $('#search-results .search-card').length;
+            $('#show-graph-btn').toggle(itemCount > 0);
+
+            // Show Find Paths toggle only if 2 or more items
+            $('#find-paths-toggle-container').toggle(itemCount >= 2);
+
+            // If less than 2 items, uncheck the toggle
+            if (itemCount < 2) {
+                $('#toggle-find-paths').prop('checked', false);
+            }
         }
 
         // Show Button Logic - Create nodes directly from search list
@@ -163,17 +179,28 @@
 
             if (searchNodes.length === 0) return;
 
-            // Clear graph and create nodes directly
+            // Check if Find Paths is enabled
+            var findPathsEnabled = $('#toggle-find-paths').is(':checked');
+
             if (window.Graph && window.Graph.clear) {
                 window.Graph.clear();
             }
 
-            if (window.Graph && window.Graph.createSearchNodes) {
-                window.Graph.createSearchNodes(searchNodes);
+            if (findPathsEnabled) {
+                // Server-Side Path Finding
+                if (window.Graph && window.Graph.findPathsServer) {
+                    window.Graph.findPathsServer(searchNodes);
+                } else {
+                    console.error("Graph.findPathsServer not implemented");
+                }
+            } else {
+                // Normal Expansion
+                if (window.Graph && window.Graph.createSearchNodes) {
+                    window.Graph.createSearchNodes(searchNodes);
+                }
+                // Show expansion controls only in normal mode
+                $('#expansion-controls').show();
             }
-
-            // Show expansion controls
-            $('#expansion-controls').show();
         });
 
         // Auto-Expand Toggle

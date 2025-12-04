@@ -60,7 +60,73 @@
                 }
             });
 
+
             console.log('Graph initialized');
+
+            // Event Listeners
+
+            // Single Click (Tap) - Show Details
+            cy.on('tap', 'node', function (evt) {
+                var node = evt.target;
+                var props = node.data('properties');
+                var nodeData = {
+                    id: node.id(),
+                    type: props && props.length > 0 ? props[0].GroupNodeID : 'Unknown',
+                    label: node.data('label'),
+                    connectedNodes: []
+                };
+
+                // Get connected nodes
+                node.connectedEdges().forEach(function (edge) {
+                    var connectedNode = edge.source().id() === node.id() ? edge.target() : edge.source();
+                    nodeData.connectedNodes.push({
+                        nodeId: connectedNode.id(),
+                        nodeLabel: connectedNode.data('label'),
+                        relationship: edge.data('label')
+                    });
+                });
+
+                $(document).trigger('nodeSelected', [nodeData]);
+
+                // Open Entity Info panel
+                // $("#main-accordion").accordion("option", "active", 4); // Index 4 is Entity Info
+            });
+
+            // Double Click (Double Tap) - Expand
+            cy.on('dbltap', 'node', function (evt) {
+                var node = evt.target;
+                if (!node.data('isExpanded')) {
+                    var props = node.data('properties');
+                    if (props && props.length > 0) {
+                        Graph.expandNodes([{
+                            GroupNodeID: props[0].GroupNodeID,
+                            NodeValueID: props[0].NodeValueID
+                        }]);
+                    }
+                }
+            });
+
+            // Background Click - Deselect
+            cy.on('tap', function (evt) {
+                if (evt.target === cy) {
+                    $(document).trigger('nodeSelected', [null]);
+                }
+            });
+
+            console.log('Graph initialized with event listeners');
+        },
+
+        showLoading: function () {
+            var $loader = $('#graph-loader');
+            if ($loader.length === 0) {
+                $('body').append('<div id="graph-loader" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;font-size:24px;color:#333;">Loading...</div>');
+                $loader = $('#graph-loader');
+            }
+            $loader.show();
+        },
+
+        hideLoading: function () {
+            $('#graph-loader').hide();
         },
 
         // Create pie chart SVG for multi-color nodes
@@ -146,11 +212,8 @@
             if (nodesToAdd.length > 0) {
                 cy.add(nodesToAdd);
 
-                cy.layout({
-                    name: 'cose',
-                    animate: true,
-                    animationDuration: 500
-                }).run();
+                var layoutName = $('#setting-layout').val() || 'cose';
+                Graph.changeLayout(layoutName);
 
                 Graph.updateStats();
                 console.log('Created ' + nodesToAdd.length + ' search nodes');
@@ -275,57 +338,68 @@
         // Process expansion results
         processExpansionResults: function (results, sourceIdentities) {
             if (!results || results.length === 0) {
-                sourceIdentities.forEach(function (identity) {
-                    var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
-                    var node = cy.getElementById(nodeId);
-                    if (node.length > 0) {
-                        node.data('isExpanded', true);
-                        node.addClass('expanded');
-                        Graph.unexpandedNodes.delete(nodeId);
-                    }
-                });
+                // If no results, still mark source nodes as expanded so we don't try again immediately
+                if (sourceIdentities) {
+                    sourceIdentities.forEach(function (identity) {
+                        var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
+                        var node = cy.getElementById(nodeId);
+                        if (node.length > 0) {
+                            node.data('isExpanded', true);
+                            node.addClass('expanded');
+                            Graph.unexpandedNodes.delete(nodeId);
+                        }
+                    });
+                }
                 Graph.updateStats();
                 return;
             }
 
-            var targetNodesMap = new Map();
+            var nodesMap = new Map();
             var nodesToAdd = [];
             var edgesToAdd = [];
 
-            // Collect unique target nodes
-            results.forEach(function (item) {
-                var targetId = item.TargetGroupNodeID + '|' + item.TargetNodeValueID;
-
-                if (!targetNodesMap.has(targetId)) {
-                    targetNodesMap.set(targetId, {
-                        label: item.TargetNodeValue,
+            // Helper to add node to map
+            function addNodeToMap(groupNodeId, nodeValueId, nodeId, label, color) {
+                var id = groupNodeId + '|' + nodeValueId;
+                if (!nodesMap.has(id)) {
+                    nodesMap.set(id, {
+                        label: label,
                         properties: []
                     });
                 }
+                // Avoid duplicate properties for the same node in this batch
+                var props = nodesMap.get(id).properties;
+                var exists = props.some(p => p.NodeID === nodeId);
+                if (!exists) {
+                    props.push({
+                        NodeID: nodeId,
+                        GroupNodeID: groupNodeId,
+                        NodeValueID: nodeValueId,
+                        NodeColor: color
+                    });
+                }
+            }
 
-                // Add target property
-                targetNodesMap.get(targetId).properties.push({
-                    NodeID: item.TargetNodeID,
-                    GroupNodeID: item.TargetGroupNodeID,
-                    NodeValueID: item.TargetNodeValueID,
-                    NodeColor: item.TargetNodeColor
-                });
+            // Collect all unique nodes (both source and target)
+            results.forEach(function (item) {
+                addNodeToMap(item.TargetGroupNodeID, item.TargetNodeValueID, item.TargetNodeID, item.TargetNodeValue, item.TargetNodeColor);
+                addNodeToMap(item.SourceGroupNodeID, item.SourceNodeValueID, item.SourceNodeID, item.SourceNodeValue, item.SourceNodeColor);
             });
 
             cy.batch(function () {
-                // Create/update target nodes
-                targetNodesMap.forEach(function (nodeData, targetId) {
-                    var existingNode = cy.getElementById(targetId);
+                // Create/update nodes
+                nodesMap.forEach(function (nodeData, nodeId) {
+                    var existingNode = cy.getElementById(nodeId);
 
                     if (existingNode.length === 0) {
-                        // Create new target node
+                        // Create new node
                         var colors = nodeData.properties.map(p => p.NodeColor);
                         var pieImage = Graph.createPieChart(colors);
 
                         nodesToAdd.push({
                             group: 'nodes',
                             data: {
-                                id: targetId,
+                                id: nodeId,
                                 label: nodeData.label || 'Unknown',
                                 color: colors[0],
                                 pieImage: pieImage,
@@ -334,47 +408,28 @@
                             }
                         });
 
-                        Graph.unexpandedNodes.add(targetId);
+                        Graph.unexpandedNodes.add(nodeId);
                     } else {
                         // Update existing node - add new properties
                         var existingProps = existingNode.data('properties') || [];
+                        var newPropsAdded = false;
+
                         nodeData.properties.forEach(function (newProp) {
-                            existingProps.push(newProp);
+                            if (!existingProps.some(p => p.NodeID === newProp.NodeID)) {
+                                existingProps.push(newProp);
+                                newPropsAdded = true;
+                            }
                         });
 
-                        existingNode.data('properties', existingProps);
+                        if (newPropsAdded) {
+                            existingNode.data('properties', existingProps);
 
-                        // Update pie chart
-                        var colors = existingProps.map(p => p.NodeColor);
-                        var pieImage = Graph.createPieChart(colors);
-                        existingNode.data('pieImage', pieImage);
-                        existingNode.data('color', colors[0]);
-                    }
-                });
-
-                // Update source node properties
-                results.forEach(function (item) {
-                    var sourceId = item.SourceGroupNodeID + '|' + item.SourceNodeValueID;
-                    var sourceNode = cy.getElementById(sourceId);
-
-                    if (sourceNode.length > 0) {
-                        var sourceProps = sourceNode.data('properties') || [];
-
-                        // Add source property
-                        sourceProps.push({
-                            NodeID: item.SourceNodeID,
-                            GroupNodeID: item.SourceGroupNodeID,
-                            NodeValueID: item.SourceNodeValueID,
-                            NodeColor: item.SourceNodeColor
-                        });
-
-                        sourceNode.data('properties', sourceProps);
-
-                        // Update pie chart
-                        var colors = sourceProps.map(p => p.NodeColor);
-                        var pieImage = Graph.createPieChart(colors);
-                        sourceNode.data('pieImage', pieImage);
-                        sourceNode.data('color', colors[0]);
+                            // Update pie chart
+                            var colors = existingProps.map(p => p.NodeColor);
+                            var pieImage = Graph.createPieChart(colors);
+                            existingNode.data('pieImage', pieImage);
+                            existingNode.data('color', colors[0]);
+                        }
                     }
                 });
 
@@ -421,7 +476,7 @@
                 // Add new elements
                 if (nodesToAdd.length > 0) {
                     cy.add(nodesToAdd);
-                    console.log('Added ' + nodesToAdd.length + ' target nodes');
+                    console.log('Added ' + nodesToAdd.length + ' nodes');
                 }
 
                 if (edgesToAdd.length > 0) {
@@ -430,18 +485,19 @@
                 }
 
                 // Mark source nodes as expanded
-                sourceIdentities.forEach(function (identity) {
-                    var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
-                    var node = cy.getElementById(nodeId);
-                    if (node.length > 0) {
-                        node.data('isExpanded', true);
-                        node.addClass('expanded');
-                        Graph.unexpandedNodes.delete(nodeId);
-                    }
-                });
+                if (sourceIdentities) {
+                    sourceIdentities.forEach(function (identity) {
+                        var nodeId = identity.GroupNodeID + '|' + identity.NodeValueID;
+                        var node = cy.getElementById(nodeId);
+                        if (node.length > 0) {
+                            node.data('isExpanded', true);
+                            node.addClass('expanded');
+                            Graph.unexpandedNodes.delete(nodeId);
+                        }
+                    });
+                }
             });
 
-            // Run layout
             // Run layout
             if (nodesToAdd.length > 0 || edgesToAdd.length > 0) {
                 var layoutName = $('#setting-layout').val() || 'cose';
@@ -450,6 +506,7 @@
 
             Graph.updateStats();
         },
+
 
         // Expand next batch
         expandNextBatch: function (batchSize) {
@@ -536,6 +593,184 @@
             var layout = cy.layout(layoutConfig);
             layout.run();
             console.log('Layout changed to:', layoutName);
+        },
+
+        // Server-Side Path Finding
+        findPathsServer: function (searchNodes) {
+            if (!searchNodes || searchNodes.length < 2) return;
+
+            var config = window.parent.APP_CONFIG;
+            if (!config || !config.api || !config.api.nodesExpand) {
+                console.error("API config missing");
+                return;
+            }
+
+            // Construct payload
+            var sourceIdentities = searchNodes.map(function (node) {
+                return {
+                    GroupNodeID: node.GroupNodeID,
+                    NodeValueID: node.NodeValueID
+                };
+            });
+
+            var payload = {
+                ViewGroupID: config.viewGroupId || 1,
+                SourceNodeIdentities: sourceIdentities,
+                MaxDepth: 4,
+                Lang: window.i18n ? window.i18n.currentLang : 'en-US'
+            };
+
+            // Use the same base URL structure but change endpoint
+            var expandUrl = config.api.nodesExpand.path; // e.g., /GraphDbApi/NodesExpand
+            var url = expandUrl.replace(/nodesexpand/i, 'NodesFindPath');
+
+            Graph.showLoading();
+
+            $.ajax({
+                url: url,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function (results) {
+                    console.log('Path Finding Results:', results);
+
+                    if (results && results.error) {
+                        console.error("Server error:", results.error);
+                        alert("Server Error: " + results.error);
+                        Graph.hideLoading();
+                        return;
+                    }
+
+                    if (!results || results.length === 0) {
+                        alert(window.i18n.get('path.notFound', 'No paths found between selected nodes within depth limit.'));
+                        Graph.hideLoading();
+                        return;
+                    }
+
+                    Graph.processExpansionResults(results, sourceIdentities);
+
+                    // Run layout
+                    var layoutName = $('#setting-layout').val() || 'cose';
+                    Graph.changeLayout(layoutName);
+
+                    Graph.hideLoading();
+                },
+                error: function (xhr, status, error) {
+                    console.error("Path finding error:", error);
+                    alert(window.i18n.get('app.errorLoading', 'Error loading data'));
+                    Graph.hideLoading();
+                }
+            });
+        },
+
+        // Client-Side Path Finding (existing)
+        paths: {},
+        pathColors: ['#ff0000', '#00ff00', '#0000ff', '#ff00ff', '#00ffff', '#ffa500'],
+        pathColorIndex: 0,
+
+        findShortestPath: function (sourceId, targetId) {
+            if (!cy) return { found: false };
+
+            var source = cy.getElementById(sourceId);
+            var target = cy.getElementById(targetId);
+
+            if (source.length === 0 || target.length === 0) {
+                return { found: false };
+            }
+
+            // Check if path already exists
+            var existingPathId = null;
+            Object.keys(Graph.paths).forEach(function (id) {
+                var p = Graph.paths[id];
+                if ((p.sourceId === sourceId && p.targetId === targetId) ||
+                    (p.sourceId === targetId && p.targetId === sourceId)) {
+                    existingPathId = id;
+                }
+            });
+
+            if (existingPathId) {
+                // Highlight existing
+                Graph.togglePath(existingPathId, true);
+                return { found: true, isDuplicate: true, id: existingPathId };
+            }
+
+            // Use Cytoscape's A* algorithm (good for shortest path)
+            var aStar = cy.elements().aStar({
+                root: source,
+                goal: target,
+                directed: false // Treat as undirected for now
+            });
+
+            if (aStar.found) {
+                var pathId = 'path-' + new Date().getTime();
+                var color = Graph.pathColors[Graph.pathColorIndex % Graph.pathColors.length];
+                Graph.pathColorIndex++;
+
+                // Store path details
+                Graph.paths[pathId] = {
+                    id: pathId,
+                    sourceId: sourceId,
+                    targetId: targetId,
+                    elements: aStar.path,
+                    color: color,
+                    visible: true
+                };
+
+                // Highlight path
+                aStar.path.addClass('highlighted-path');
+                aStar.path.style('line-color', color);
+                aStar.path.style('target-arrow-color', color);
+                aStar.path.style('border-color', color);
+                aStar.path.style('border-width', 4);
+                aStar.path.edges().style('width', 4);
+
+                return {
+                    found: true,
+                    id: pathId,
+                    length: aStar.distance,
+                    color: color
+                };
+            }
+
+            return { found: false };
+        },
+
+        togglePath: function (pathId, visible) {
+            var path = Graph.paths[pathId];
+            if (path) {
+                path.visible = visible;
+                if (visible) {
+                    path.elements.style('line-color', path.color);
+                    path.elements.style('target-arrow-color', path.color);
+                    path.elements.style('border-color', path.color);
+                    path.elements.style('width', 4);
+                    path.elements.edges().style('width', 4);
+                } else {
+                    path.elements.removeStyle('line-color');
+                    path.elements.removeStyle('target-arrow-color');
+                    path.elements.removeStyle('border-color');
+                    path.elements.removeStyle('width');
+                    path.elements.edges().removeStyle('width');
+                }
+            }
+        },
+
+        removePath: function (pathId) {
+            var path = Graph.paths[pathId];
+            if (path) {
+                path.elements.removeStyle('line-color');
+                path.elements.removeStyle('target-arrow-color');
+                path.elements.removeStyle('border-color');
+                path.elements.removeStyle('width');
+                path.elements.edges().removeStyle('width');
+                path.elements.removeClass('highlighted-path');
+                delete Graph.paths[pathId];
+            }
+        },
+
+        getSelectedNodes: function () {
+            if (!cy) return [];
+            return cy.nodes(':selected');
         },
 
         clear: function () {
