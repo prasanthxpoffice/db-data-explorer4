@@ -116,4 +116,9 @@ namespace IAS.Areas.DbGraph.Models
         public int MaxDepth { get; set; } = 4;
         public string Lang { get; set; } = "en-US";
     }
+
+    public class GraphDataGenerateRequest
+    {
+        public int ViewGroupID { get; set; }
+    }
 }

@@ -4,6 +4,12 @@
             <option value="" data-i18n="datasource.loading">Loading...</option>
         </select>
     </div>
+    <div class="form-group" style="margin-top: 10px;">
+        <button id="btn-update-viewgroup" data-i18n="datasource.update"
+            style="display: none; width: 100%; padding: 6px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Update
+        </button>
+    </div>
 </div>
 
 <script>
@@ -61,6 +67,14 @@
         // Trigger event on change
         $('#view-groups-dropdown').on('change', function () {
             var selectedId = $(this).val();
+            var $btnUpdate = $('#btn-update-viewgroup');
+
+            // Show/Hide Update Button
+            if (selectedId && parseInt(selectedId) > 0) {
+                $btnUpdate.show();
+            } else {
+                $btnUpdate.hide();
+            }
 
             // Store globally for other components (like Node Settings)
             if (window.parent && window.parent.APP_CONFIG) {
@@ -68,6 +82,42 @@
             }
 
             $(document).trigger('viewGroupChanged', [selectedId]);
+        });
+
+        // Update Button Click Handler
+        $('#btn-update-viewgroup').on('click', function () {
+            var selectedId = $('#view-groups-dropdown').val();
+            if (!selectedId || parseInt(selectedId) <= 0) return;
+
+            var $btn = $(this);
+            // Use translation for "Updating..."
+            $btn.prop('disabled', true).text(window.i18n.get('datasource.updating'));
+
+            var updateUrl = config.api.graphDataGenerate ? config.api.graphDataGenerate.path : null;
+            if (!updateUrl) {
+                alert("API configuration for 'graphDataGenerate' not found.");
+                // Restore button text using translation
+                $btn.prop('disabled', false).text(window.i18n.get('datasource.update'));
+                return;
+            }
+
+            $.ajax({
+                url: updateUrl,
+                method: 'POST', // Assuming POST as per plan
+                contentType: 'application/json',
+                data: JSON.stringify({ ViewGroupID: parseInt(selectedId) }),
+                success: function (response) {
+                    alert("Graph data updated successfully!");
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error updating graph data:", error);
+                    alert("Error updating graph data: " + error);
+                },
+                complete: function () {
+                    // Restore button text using translation
+                    $btn.prop('disabled', false).text(window.i18n.get('datasource.update'));
+                }
+            });
         });
     })();
 </script>
