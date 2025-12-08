@@ -35,7 +35,16 @@
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
                         var id = 'switch_' + options.rowId;
-                        return '<label class="switch"><input type="checkbox" id="' + id + '" data-rowid="' + options.rowId + '"><span class="slider round"></span></label>';
+                        // specific logic: if dates are present, check the switch? 
+                        // Or maybe isDefaultSearch applies to this? 
+                        // User said: "in grid checkbox make checked based on isDefaultSearch"
+                        // Usually "grid checkbox" == multiselect. 
+                        // Let's assume switch is default off unless we want to persist state (which we don't have yet).
+                        // But if FromDate/ToDate are populated from DB, likely we want to show them.
+                        // Let's check if either date is present.
+                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
+                        var checked = hasDate ? 'checked' : '';
+                        return '<label class="switch"><input type="checkbox" id="' + id + '" data-rowid="' + options.rowId + '" ' + checked + '><span class="slider round"></span></label>';
                     }
                 },
                 {
@@ -45,7 +54,10 @@
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
-                        return '<input type="text" class="date-input from-date" data-rowid="' + options.rowId + '" disabled style="width: 100%; box-sizing: border-box; display: none;">';
+                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
+                        var display = hasDate ? '' : 'display: none;';
+                        var disabled = hasDate ? '' : 'disabled';
+                        return '<input type="text" class="date-input from-date" data-rowid="' + options.rowId + '" value="' + (cellvalue || '') + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
                     }
                 },
                 {
@@ -55,7 +67,10 @@
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
-                        return '<input type="text" class="date-input to-date" data-rowid="' + options.rowId + '" disabled style="width: 100%; box-sizing: border-box; display: none;">';
+                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
+                        var display = hasDate ? '' : 'display: none;';
+                        var disabled = hasDate ? '' : 'disabled';
+                        return '<input type="text" class="date-input to-date" data-rowid="' + options.rowId + '" value="' + (cellvalue || '') + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
                     }
                 }
             ];
@@ -72,10 +87,27 @@
                 pager: "#legends-pager", // Explicitly provided
                 caption: window.i18n.get('legends.title'),
                 loadComplete: function () {
-                    // Select all rows by default
-                    var rowIds = $grid.jqGrid('getDataIDs');
-                    $.each(rowIds, function (index, rowId) {
-                        $grid.jqGrid('setSelection', rowId, false);
+                    var ids = $grid.jqGrid('getDataIDs');
+                    var data = $grid.jqGrid('getGridParam', 'data');
+
+                    // The 'data' array in local mode matches the source data structure
+                    // We need to map IDs to data rows to check isDefaultSearch, 
+                    // or iterate ids and getRowData (which might not have hidden/custom fields if not in colModel?)
+                    // Safest is to iterate the data array if it's the source.
+                    // But getDataIDs returns IDs in order. 
+
+                    // Actually, if datatype is local, 'data' is the array.
+                    // Let's try to access the row data by ID.
+
+                    ids.forEach(function (rowId) {
+                        var rowData = $grid.jqGrid('getLocalRow', rowId);
+                        // isDefaultSearch might be string "true"/"false" or boolean 1/0 or true/false depending on JSON
+                        // SP returns bit -> likely boolean true/false or 1/0 in JSON.
+                        // Let's match truthy.
+                        if (rowData && rowData.isDefaultSearch) {
+                            $grid.jqGrid('setSelection', rowId, false); // false = do not trigger onSelectRow? No, false = do not run onSelectRow event? 
+                            // Document says: setSelection(rowid, onselect) - onselect is boolean.
+                        }
                     });
                 },
                 onSelectRow: function () {

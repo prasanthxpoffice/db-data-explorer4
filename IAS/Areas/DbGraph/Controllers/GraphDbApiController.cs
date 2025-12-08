@@ -38,10 +38,10 @@ namespace IAS.Areas.DbGraph.Controllers
 
         [HttpGet]
         [Route("viewgroups")]
-        public ActionResult GetViewGroups(string lang = "en")
+        public ActionResult GetViewGroups(string lang = "en-US")
         {
             // Map simple lang code to full culture code expected by SP
-            string sqlLang = (lang == "ar") ? "ar-AE" : "en-US";
+            string sqlLang = lang;
 
             var dt = new DataTable();
             using (var conn = new SqlConnection(_connectionString))
@@ -68,9 +68,9 @@ namespace IAS.Areas.DbGraph.Controllers
 
         [HttpGet]
         [Route("viewgroupnodes")]
-        public ActionResult GetViewGroupNodes(int viewGroupId, string lang = "en")
+        public ActionResult GetViewGroupNodes(int viewGroupId, string lang = "en-US")
         {
-            string sqlLang = (lang == "ar") ? "ar-AE" : "en-US";
+            string sqlLang = lang;
             var dt = new DataTable();
 
             using (var conn = new SqlConnection(_connectionString))
@@ -98,10 +98,10 @@ namespace IAS.Areas.DbGraph.Controllers
 
         [HttpGet]
         [Route("nodedataautocomplete")]
-        public ActionResult NodeDataAutoComplete(int NodeID, string SearchText, int TopCount = 20, string Lang = "en")
+        public ActionResult NodeDataAutoComplete(int NodeID, string SearchText, int TopCount = 20, string Lang = "en-US")
         {
             // Map simple lang code to full culture code expected by SP
-            string sqlLang = (Lang == "ar") ? "ar-AE" : "en-US";
+            string sqlLang = Lang;
             var dt = new DataTable();
 
             using (var conn = new SqlConnection(_connectionString))
@@ -131,20 +131,9 @@ namespace IAS.Areas.DbGraph.Controllers
 
         [HttpGet]
         [Route("groupnodes")]
-        public ActionResult GroupNodeList(string lang = "en")
+        public ActionResult GroupNodeList(string lang = "en-US")
         {
-            // Map simple lang code to full culture code expected by SP
-            // Note: The user's SP seems to accept 'En' or 'Ar' directly, but let's stick to the pattern or pass as is?
-            // User SP: @Lang NVARCHAR(10) = 'En' -- 'En' or 'Ar'
-            // Existing code maps "ar" -> "ar-AE". 
-            // Let's assume the SP handles 'ar-AE' or we should pass 'Ar'/'En'.
-            // Looking at the SP definition provided: 
-            // CASE WHEN LOWER(@Lang) = 'ar' THEN ...
-            // So 'ar-AE' might fail if it strictly checks = 'ar'. 
-            // However, existing methods use "ar-AE". Let's check existing SPs? 
-            // Actually, let's just pass "Ar" or "En" to be safe based on the provided SP script.
-            
-            string sqlLang = (lang.ToLower() == "ar") ? "Ar" : "En";
+            string sqlLang = lang;
 
             var dt = new DataTable();
             using (var conn = new SqlConnection(_connectionString))
@@ -200,10 +189,9 @@ namespace IAS.Areas.DbGraph.Controllers
  
         [HttpGet]
         [Route("relationslist")]
-        public ActionResult RelationsList(int ViewGroupID, bool OnlyActive = false, string lang = "en")
+        public ActionResult RelationsList(int ViewGroupID, bool OnlyActive = false, string lang = "en-US")
         {
-            // Map simple lang code to full culture code expected by SP
-            string sqlLang = (lang == "ar") ? "ar-AE" : "en-US";
+            string sqlLang = lang;
             var dt = new DataTable();
             using (var conn = new SqlConnection(_connectionString))
             {
@@ -283,7 +271,7 @@ namespace IAS.Areas.DbGraph.Controllers
         [Route("nodesexpand")]
         public ActionResult NodesExpand(NodesExpandRequest request)
         {
-            string sqlLang = (request.Lang == "ar") ? "ar-AE" : "en-US";
+            string sqlLang = request.Lang;
             var dt = new DataTable();
 
             // Create DataTable for Source Node Identities TVP
@@ -383,7 +371,7 @@ namespace IAS.Areas.DbGraph.Controllers
             try 
             {
                 var dt = new DataTable();
-                var sqlLang = request.Lang == "ar" ? "ar-AE" : "en-US";
+                var sqlLang = request.Lang;
 
                 // Create DataTable for Source Node Identities TVP
                 var sourceTvp = new DataTable();
