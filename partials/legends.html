@@ -11,7 +11,36 @@
         function initGrid(lang) {
             var $wrapper = $("#legends-wrapper");
             $wrapper.empty();
+
+            // Add Global Date Controls
+            var globalControlsHtml = '<div id="global-date-controls" style="padding: 5px; border-bottom: 1px solid #ddd; margin-bottom: 5px;">' +
+                '<label>' + window.i18n.get('legends.from') + ': </label>' +
+                '<input type="text" id="global-from-date" class="date-input" style="width: 110px; margin-right: 10px;">' +
+                '<label>' + window.i18n.get('legends.to') + ': </label>' +
+                '<input type="text" id="global-to-date" class="date-input" style="width: 110px; margin-right: 10px;">' +
+                '<button id="btn-apply-dates" style="padding: 2px 10px; cursor: pointer;">' + window.i18n.get('filter.apply') + '</button>' +
+                '</div>';
+
+            $wrapper.append(globalControlsHtml);
             $wrapper.append('<table id="legends-grid"></table><div id="legends-pager"></div>');
+
+            // Init global datepickers
+            $("#global-from-date, #global-to-date").datepicker({
+                dateFormat: "dd/mm/yy"
+            });
+
+            // Apply Button Handler
+            $('#btn-apply-dates').on('click', function () {
+                var fromVal = $('#global-from-date').val();
+                var toVal = $('#global-to-date').val();
+
+                if (fromVal) {
+                    $('#legends-grid .from-date').val(fromVal);
+                }
+                if (toVal) {
+                    $('#legends-grid .to-date').val(toVal);
+                }
+            });
 
             var $grid = $("#legends-grid");
 
@@ -35,13 +64,6 @@
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
                         var id = 'switch_' + options.rowId;
-                        // specific logic: if dates are present, check the switch? 
-                        // Or maybe isDefaultSearch applies to this? 
-                        // User said: "in grid checkbox make checked based on isDefaultSearch"
-                        // Usually "grid checkbox" == multiselect. 
-                        // Let's assume switch is default off unless we want to persist state (which we don't have yet).
-                        // But if FromDate/ToDate are populated from DB, likely we want to show them.
-                        // Let's check if either date is present.
                         var hasDate = (rowObject.FromDate || rowObject.ToDate);
                         var checked = hasDate ? 'checked' : '';
                         return '<label class="switch"><input type="checkbox" id="' + id + '" data-rowid="' + options.rowId + '" ' + checked + '><span class="slider round"></span></label>';
@@ -50,7 +72,7 @@
                 {
                     label: window.i18n.get('legends.from'),
                     name: 'FromDate',
-                    width: 80,
+                    width: 110,
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
@@ -63,7 +85,7 @@
                 {
                     label: window.i18n.get('legends.to'),
                     name: 'ToDate',
-                    width: 80,
+                    width: 110,
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
@@ -88,33 +110,33 @@
                 caption: window.i18n.get('legends.title'),
                 loadComplete: function () {
                     var ids = $grid.jqGrid('getDataIDs');
-                    var data = $grid.jqGrid('getGridParam', 'data');
-
-                    // The 'data' array in local mode matches the source data structure
-                    // We need to map IDs to data rows to check isDefaultSearch, 
-                    // or iterate ids and getRowData (which might not have hidden/custom fields if not in colModel?)
-                    // Safest is to iterate the data array if it's the source.
-                    // But getDataIDs returns IDs in order. 
-
-                    // Actually, if datatype is local, 'data' is the array.
-                    // Let's try to access the row data by ID.
 
                     ids.forEach(function (rowId) {
                         var rowData = $grid.jqGrid('getLocalRow', rowId);
-                        // isDefaultSearch might be string "true"/"false" or boolean 1/0 or true/false depending on JSON
-                        // SP returns bit -> likely boolean true/false or 1/0 in JSON.
-                        // Let's match truthy.
-                        if (rowData && rowData.isDefaultSearch) {
-                            $grid.jqGrid('setSelection', rowId, false); // false = do not trigger onSelectRow? No, false = do not run onSelectRow event? 
-                            // Document says: setSelection(rowid, onselect) - onselect is boolean.
+                        var isDefault = rowData && (rowData.isDefaultSearch === true || rowData.isDefaultSearch === "true" || rowData.isDefaultSearch === 1);
+                        if (isDefault) {
+                            $grid.jqGrid('setSelection', rowId, false);
                         }
                     });
+
+                    // Initialize datepicker with a slight delay to ensure DOM is ready
+                    setTimeout(function () {
+                        $('#legends-grid .date-input').each(function () {
+                            $(this).datepicker({
+                                dateFormat: "dd/mm/yy"
+                            });
+                        });
+                    }, 100);
                 },
                 onSelectRow: function () {
                     triggerSelectionChange();
                 },
                 onSelectAll: function () {
                     triggerSelectionChange();
+                },
+                beforeSelectRow: function (rowid, e) {
+                    var $target = $(e.target);
+                    return $target.hasClass('cbox');
                 }
             });
 
@@ -122,7 +144,6 @@
 
             function triggerSelectionChange() {
                 var selectedIds = $grid.jqGrid('getGridParam', 'selarrrow');
-                // Trigger global event for Graph to handle
                 if (window.Graph && window.Graph.setVisibleLegendIds) {
                     window.Graph.setVisibleLegendIds(selectedIds);
                 }
@@ -176,7 +197,7 @@
             initGrid(lang);
         });
 
-        // Handle Date Switch Toggle (Delegated to document to handle re-created elements)
+        // Handle Date Switch Toggle
         $(document).on('change', '.switch input', function () {
             var isChecked = $(this).is(':checked');
             var rowId = $(this).data('rowid');

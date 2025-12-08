@@ -101,10 +101,20 @@
                         var $toInput = $row.find('.to-date');
 
                         if ($fromInput.val()) {
-                            fromDate = $fromInput.datepicker('getDate') || fromDate;
+                            // Fix: Use text value or construct date correctly to avoid UTC shift
+                            var d = $fromInput.datepicker('getDate');
+                            if (d) {
+                                // Adjust for timezone offset so ISO string matches local date
+                                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                fromDate = d.toISOString();
+                            }
                         }
                         if ($toInput.val()) {
-                            toDate = $toInput.datepicker('getDate') || toDate;
+                            var d = $toInput.datepicker('getDate');
+                            if (d) {
+                                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                toDate = d.toISOString();
+                            }
                         }
                     }
 
