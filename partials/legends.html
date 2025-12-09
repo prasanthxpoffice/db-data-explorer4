@@ -35,14 +35,21 @@
                 var toVal = $('#global-to-date').val();
 
                 if (fromVal) {
-                    $('#legends-grid .from-date').val(fromVal);
+                    $('#legends-grid .from-date:visible').val(fromVal);
                 }
                 if (toVal) {
-                    $('#legends-grid .to-date').val(toVal);
+                    $('#legends-grid .to-date:visible').val(toVal);
                 }
             });
 
             var $grid = $("#legends-grid");
+
+            // Helper to check requirement
+            function isDateRequired(rowObject) {
+                return (rowObject.isDateFilterRequired === true ||
+                    rowObject.isDateFilterRequired === "true" ||
+                    rowObject.isDateFilterRequired === 1);
+            }
 
             var colModel = [
                 { name: 'NodeID', hidden: true, key: true },
@@ -64,8 +71,8 @@
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
                         var id = 'switch_' + options.rowId;
-                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
-                        var checked = hasDate ? 'checked' : '';
+                        var required = isDateRequired(rowObject);
+                        var checked = required ? 'checked' : '';
                         return '<label class="switch"><input type="checkbox" id="' + id + '" data-rowid="' + options.rowId + '" ' + checked + '><span class="slider round"></span></label>';
                     }
                 },
@@ -76,10 +83,12 @@
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
-                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
-                        var display = hasDate ? '' : 'display: none;';
-                        var disabled = hasDate ? '' : 'disabled';
-                        return '<input type="text" class="date-input from-date" data-rowid="' + options.rowId + '" value="' + (cellvalue || '') + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
+                        var required = isDateRequired(rowObject);
+                        var display = required ? '' : 'display: none;';
+                        var disabled = required ? '' : 'disabled';
+                        // If not required, set default value '01/01/1990'
+                        var value = required ? (cellvalue || '') : '01/01/1990';
+                        return '<input type="text" class="date-input from-date" data-rowid="' + options.rowId + '" value="' + value + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
                     }
                 },
                 {
@@ -89,10 +98,12 @@
                     align: 'center',
                     sortable: false,
                     formatter: function (cellvalue, options, rowObject) {
-                        var hasDate = (rowObject.FromDate || rowObject.ToDate);
-                        var display = hasDate ? '' : 'display: none;';
-                        var disabled = hasDate ? '' : 'disabled';
-                        return '<input type="text" class="date-input to-date" data-rowid="' + options.rowId + '" value="' + (cellvalue || '') + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
+                        var required = isDateRequired(rowObject);
+                        var display = required ? '' : 'display: none;';
+                        var disabled = required ? '' : 'disabled';
+                        // If not required, set default value '31/12/2099'
+                        var value = required ? (cellvalue || '') : '31/12/2099';
+                        return '<input type="text" class="date-input to-date" data-rowid="' + options.rowId + '" value="' + value + '" ' + disabled + ' style="width: 100%; box-sizing: border-box; ' + display + '">';
                     }
                 }
             ];
@@ -122,9 +133,11 @@
                     // Initialize datepicker with a slight delay to ensure DOM is ready
                     setTimeout(function () {
                         $('#legends-grid .date-input').each(function () {
-                            $(this).datepicker({
-                                dateFormat: "dd/mm/yy"
-                            });
+                            if (!$(this).prop('disabled')) {
+                                $(this).datepicker({
+                                    dateFormat: "dd/mm/yy"
+                                });
+                            }
                         });
                     }, 100);
                 },
@@ -167,6 +180,7 @@
                     lang: lang
                 },
                 success: function (data) {
+                    console.log('Legend Data:', data);
                     $grid.jqGrid('clearGridData');
                     $grid.jqGrid('setGridParam', {
                         datatype: 'local',
@@ -202,14 +216,17 @@
             var isChecked = $(this).is(':checked');
             var rowId = $(this).data('rowid');
             var $row = $('#' + rowId);
-            var $inputs = $row.find('.date-input');
+            var $fromInput = $row.find('.from-date');
+            var $toInput = $row.find('.to-date');
 
             if (isChecked) {
-                $inputs.show().prop('disabled', false).datepicker({
-                    dateFormat: "dd/mm/yy"
-                });
+                // Enable and clear value for fresh input
+                $fromInput.show().prop('disabled', false).val('').datepicker({ dateFormat: "dd/mm/yy" });
+                $toInput.show().prop('disabled', false).val('').datepicker({ dateFormat: "dd/mm/yy" });
             } else {
-                $inputs.hide().prop('disabled', true).val('').datepicker("destroy");
+                // Disable, hide, and set default values
+                $fromInput.hide().prop('disabled', true).val('01/01/1990').datepicker("destroy");
+                $toInput.hide().prop('disabled', true).val('31/12/2099').datepicker("destroy");
             }
         });
     })();
